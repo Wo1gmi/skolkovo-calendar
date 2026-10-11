@@ -149,11 +149,18 @@ def educational_environment(item):
     return bool(re.search(r'образова\w*\s+сред\w*', normalize_title(item['title'])))
 
 
+def project_management(item):
+    title = normalize_title(item['title'])
+    return bool(re.search(r'проектн\w*\s+менеджмен\w*|project\s+management', title))
+
+
 def event_color(item):
     if educational_environment(item):
         return '8'
     if group_one_only(item):
         return '8'
+    if project_management(item):
+        return '7'
     text = normalize_title(' '.join(str(item.get(k) or '') for k in ('title', 'note')))
     assessment = r'\b(?:тест\w*|контрольн\w*|итогов\w*|экзамен\w*|зачет\w*|проверочн\w*|рубежн\w*|quiz\w*|exam\w*|midterm\w*|final\w*|assessment\w*)\b'
     if re.search(assessment, text):
@@ -198,7 +205,7 @@ def plan(items, existing, timezone, first, last, delete=False, reset_colors=Fals
     actions = []
     for key, body in desired.items():
         previous = current.get(key)
-        force_gray = educational_environment(next(i for i in items if str(i['id']) == key))
+        force_color = educational_environment({'title': body['summary']}) or project_management({'title': body['summary']})
         # Color belongs to the user after creation; exclude it from source comparisons.
         comparable = {k: v for k, v in body.items() if k != 'colorId'}
         digest = hashlib.sha256(json.dumps(comparable, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -206,9 +213,9 @@ def plan(items, existing, timezone, first, last, delete=False, reset_colors=Fals
         if previous is None:
             actions.append(('insert', None, body))
         elif (previous['extendedProperties']['private'].get('content_hash') != digest
-              or ((reset_colors or force_gray) and previous.get('colorId') != body.get('colorId'))):
+              or ((reset_colors or force_color) and previous.get('colorId') != body.get('colorId'))):
             # Omitting colorId from PATCH preserves even the user's default calendar color.
-            if not reset_colors and not force_gray:
+            if not reset_colors and not force_color:
                 body.pop('colorId', None)
             actions.append(('patch', previous['id'], body))
     if delete:
