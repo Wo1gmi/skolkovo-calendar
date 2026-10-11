@@ -164,6 +164,11 @@ def collect(client, course_ids):
     return assignments, reviews, failures
 
 
+def future_assignments(assignments, now=None):
+    now = now or datetime.now(TZ)
+    return [a for a in assignments if datetime.fromisoformat(a['due']) > now]
+
+
 def sync_exact(assignments):
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
@@ -181,7 +186,7 @@ def sync_exact(assignments):
     now = datetime.now(TZ)
     for assignment in assignments:
         due = datetime.fromisoformat(assignment['due'])
-        if due < now:
+        if due <= now:
             continue
         old = current.get(assignment['id'])
         private = dict((old or {}).get('extendedProperties', {}).get('private', {}))
@@ -224,14 +229,17 @@ def main():
     client.login()
     assignments, reviews, failures = collect(client, config['course_ids'])
     print('Exact deadlines:', len(assignments), 'file candidates:', len(reviews), 'unread files:', len(failures))
+    assignments = future_assignments(assignments)
+    print('Future exact deadlines:', len(assignments))
     if os.environ.get('LMS_APPLY') == 'true':
         sync_exact(assignments)
-    if os.environ.get('LMS_REPORT') == 'true':
-        telegram('Проверка LMS: точных сроков — ' + str(len(assignments)) + ', материалов с возможными заданиями — ' + str(len(reviews)) + ', непрочитанных файлов — ' + str(len(failures)))
-        for review in reviews:
-            telegram('🔎 Требует проверки: ' + review['course'] + '\n' + review['name'] + '\n' + review['url'] + '\n' + '\n[…]\n'.join(review['snippets']))
-        for failure in failures:
-            telegram('⚠️ Не прочитан файл: ' + failure['course'] + '\n' + failure['name'] + '\n' + failure['reason'] + '\n' + failure['url'])
+    elif os.environ.get('LMS_REPORT') == 'true':
+        for assignment in assignments:
+            due = datetime.fromisoformat(assignment['due'])
+            telegram('📝 Задание: ' + assignment['course'] + ' — ' + assignment['title'] +
+                     '\nСдать до: ' + due.strftime('%d.%m.%Y %H:%M') +
+                     '\n' + assignment['url'])
+    # Undated candidates and download failures stay out of Telegram.
 
 
 if __name__ == '__main__':
