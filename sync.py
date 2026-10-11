@@ -159,12 +159,12 @@ def event_color(item):
         return '8'
     if group_one_only(item):
         return '8'
-    if project_management(item):
-        return '7'
     text = normalize_title(' '.join(str(item.get(k) or '') for k in ('title', 'note')))
-    assessment = r'\b(?:тест\w*|контрольн\w*|итогов\w*|экзамен\w*|зачет\w*|проверочн\w*|рубежн\w*|quiz\w*|exam\w*|midterm\w*|final\w*|assessment\w*)\b'
+    assessment = r'\b(?:тест\w*|контрольн\w*|сдач\w*|сдать|работ\w*|итогов\w*|сочинен\w*|эссе|экзамен\w*|зач[её]т\w*|проверочн\w*|рубежн\w*|аттестац\w*|коллоквиум\w*|защит\w*|дедлайн\w*|домашн\w*\s+задан\w*|quiz\w*|test\w*|exam\w*|midterm\w*|final\w*|assessment\w*|essay\w*|submission\w*|deadline\w*)\b'
     if re.search(assessment, text):
         return '11'
+    if project_management(item):
+        return '7'
     title = normalize_title(item['title'])
     for entry in SUBJECT_COLORS:
         if any(normalize_title(alias) in title for alias in entry['aliases']):
@@ -207,7 +207,8 @@ def plan(items, existing, timezone, first, last, delete=False, reset_colors=Fals
         previous = current.get(key)
         force_color = (educational_environment({'title': body['summary']})
                        or project_management({'title': body['summary']})
-                       or 'искусственный интеллект в бизнесе' in normalize_title(body['summary']))
+                       or 'искусственный интеллект в бизнесе' in normalize_title(body['summary'])
+                       or body['colorId'] == '11')
         # Color belongs to the user after creation; exclude it from source comparisons.
         comparable = {k: v for k, v in body.items() if k != 'colorId'}
         digest = hashlib.sha256(json.dumps(comparable, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
