@@ -1,5 +1,6 @@
 import unittest
-from lms_sync import parse_due, candidates, safe_url
+from lms_sync import parse_due, candidates, safe_url, future_assignments, TZ
+from datetime import datetime
 
 
 class LMSTest(unittest.TestCase):
@@ -13,6 +14,13 @@ class LMSTest(unittest.TestCase):
         self.assertTrue(candidates('Во время чтения делайте три типа заметок на полях.'))
         self.assertTrue(candidates('В рамках домашнего задания к заключительному занятию модуля'))
         self.assertEqual(candidates('Курс проводится осенью 2026 года.'), [])
+
+    def test_only_strictly_future_deadlines(self):
+        now = datetime(2026, 10, 11, 12, 0, tzinfo=TZ)
+        items = [{'id': 'past', 'due': '2026-10-10T23:59:00+03:00'},
+                 {'id': 'now', 'due': now.isoformat()},
+                 {'id': 'future', 'due': '2026-10-16T23:59:00+03:00'}]
+        self.assertEqual([a['id'] for a in future_assignments(items, now)], ['future'])
 
     def test_no_external_credentials_destination(self):
         self.assertEqual(safe_url('https://l.skolkovo.ru/my/'), 'https://l.skolkovo.ru/my/')
