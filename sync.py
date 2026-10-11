@@ -146,12 +146,12 @@ def normalize_title(value):
 
 
 def event_color(item):
+    if group_one_only(item):
+        return '8'
     text = normalize_title(' '.join(str(item.get(k) or '') for k in ('title', 'note')))
     assessment = r'\b(?:тест\w*|контрольн\w*|итогов\w*|экзамен\w*|зачет\w*|проверочн\w*|рубежн\w*|quiz\w*|exam\w*|midterm\w*|final\w*|assessment\w*)\b'
     if re.search(assessment, text):
         return '11'
-    if group_one_only(item):
-        return '8'
     title = normalize_title(item['title'])
     for entry in SUBJECT_COLORS:
         if any(normalize_title(alias) in title for alias in entry['aliases']):
