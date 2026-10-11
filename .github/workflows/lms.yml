@@ -9,7 +9,7 @@ on:
         type: boolean
         default: false
       report:
-        description: Send file assignment candidates to Telegram for review
+        description: Send only future exact deadlines to Telegram
         type: boolean
         default: true
 permissions:
