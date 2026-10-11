@@ -1,0 +1,42 @@
+name: LMS assignments
+on:
+  schedule:
+    - cron: '15 6,18 * * *'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Add exact LMS deadlines to calendar
+        type: boolean
+        default: false
+      report:
+        description: Send file assignment candidates to Telegram for review
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: skolkovo-calendar
+  cancel-in-progress: false
+jobs:
+  lms:
+    if: github.event_name == 'workflow_dispatch' || vars.LMS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SKOLKOVO_EMAIL: ${{ secrets.SKOLKOVO_EMAIL }}
+      SKOLKOVO_PASSWORD: ${{ secrets.SKOLKOVO_PASSWORD }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+      LMS_CALENDAR_ID: ${{ secrets.LMS_CALENDAR_ID }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      LMS_APPLY: ${{ github.event_name == 'workflow_dispatch' && inputs.apply || github.event_name == 'schedule' }}
+      LMS_REPORT: ${{ github.event_name == 'workflow_dispatch' && inputs.report || false }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r lms-requirements.txt
+      - run: python -m unittest test_lms
+      - run: python lms_sync.py
