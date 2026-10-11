@@ -205,7 +205,9 @@ def plan(items, existing, timezone, first, last, delete=False, reset_colors=Fals
     actions = []
     for key, body in desired.items():
         previous = current.get(key)
-        force_color = educational_environment({'title': body['summary']}) or project_management({'title': body['summary']})
+        force_color = (educational_environment({'title': body['summary']})
+                       or project_management({'title': body['summary']})
+                       or 'искусственный интеллект в бизнесе' in normalize_title(body['summary']))
         # Color belongs to the user after creation; exclude it from source comparisons.
         comparable = {k: v for k, v in body.items() if k != 'colorId'}
         digest = hashlib.sha256(json.dumps(comparable, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
