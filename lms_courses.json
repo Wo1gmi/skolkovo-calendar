@@ -1,4 +1,13 @@
 {
-  "course_ids": [938, 939, 940, 941, 942, 943, 945],
+  "course_ids": [
+    937,
+    938,
+    939,
+    940,
+    941,
+    942,
+    943,
+    945
+  ],
   "note": "Current semester courses verified in LMS. Add new IDs after checking access and relevance."
 }
