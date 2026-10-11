@@ -135,7 +135,7 @@ def group_one_only(item):
     return groups == {'1'}
 
 
-NORMAL_COLORS = ('1', '2', '3', '5', '7', '9', '10')
+NORMAL_COLORS = ('1', '3', '5', '7', '9', '10')
 SUBJECT_COLORS = json.loads(Path(__file__).with_name('subject_colors.json').read_text(encoding='utf-8'))['subjects']
 if any(entry['color_id'] not in NORMAL_COLORS for entry in SUBJECT_COLORS):
     raise RuntimeError('Invalid subject color in dictionary')
