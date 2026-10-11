@@ -1,7 +1,7 @@
 name: Schedule sync
 on:
   schedule:
-    - cron: '17 3 * * *'
+    - cron: '0 6,18 * * *'
   workflow_dispatch:
     inputs:
       apply:
