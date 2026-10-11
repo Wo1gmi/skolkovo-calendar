@@ -170,6 +170,43 @@ def plan(items, existing, timezone, first, last, delete=False):
     return actions
 
 
+
+def notify_change(kind, previous, body):
+    token = os.environ.get('TELEGRAM_BOT_TOKEN')
+    chat = os.environ.get('TELEGRAM_CHAT_ID')
+    if not token or not chat:
+        return
+    def when(event):
+        raw = event.get('start', {}).get('dateTime', '')
+        return datetime.fromisoformat(raw).strftime('%d.%m.%Y %H:%M') if raw else 'время не указано'
+    if kind == 'delete':
+        message = '❌ Отменено: ' + previous.get('summary', 'Занятие') + '\\n' + when(previous)
+    elif kind == 'insert':
+        message = '➕ Новое занятие: ' + body['summary'] + '\\n' + when(body)
+    else:
+        differences = []
+        for field, label in [('summary', 'Название'), ('location', 'Аудитория'),
+                             ('description', 'Описание')]:
+            if (previous.get(field) or '') != (body.get(field) or ''):
+                differences.append(label + ': ' + str(previous.get(field) or '—') +
+                                   ' → ' + str(body.get(field) or '—'))
+        for field, label in [('start', 'Начало'), ('end', 'Конец')]:
+            old = previous.get(field, {}).get('dateTime')
+            new = body.get(field, {}).get('dateTime')
+            if old and new and datetime.fromisoformat(old) != datetime.fromisoformat(new):
+                fmt = lambda value: datetime.fromisoformat(value).strftime('%d.%m.%Y %H:%M')
+                differences.append(label + ': ' + fmt(old) + ' → ' + fmt(new))
+        if not differences:
+            return
+        message = '🔄 Изменено: ' + body['summary'] + '\\n' + '\\n'.join(differences)
+    for offset in range(0, len(message), 3500):
+        response = requests.post('https://api.telegram.org/bot' + token + '/sendMessage',
+                                 json={'chat_id': chat, 'text': message[offset:offset+3500]},
+                                 timeout=30)
+        if response.status_code != 200 or not response.json().get('ok'):
+            raise RuntimeError('Telegram notification failed; check bot secrets')
+
+
 def main():
     timezone = ZoneInfo(required('SCHEDULE_TIMEZONE'))
     first = datetime.now(timezone).date()
@@ -207,6 +244,7 @@ def main():
     apply = os.environ.get('APPLY') == 'true'
     counts = {kind: sum(a[0] == kind for a in actions) for kind in ('insert', 'patch', 'delete')}
     print('Lessons:', len(items), 'planned:', counts, 'apply:', apply)
+    previous_by_id = {e['id']: e for e in existing}
     if apply:
         for kind, event_id, body in actions:
             kwargs = {'calendarId': calendar}
@@ -215,6 +253,9 @@ def main():
             if body:
                 kwargs['body'] = body
             getattr(api, kind)(**kwargs).execute()
+            # First import creates the baseline without hundreds of alerts.
+            if existing:
+                notify_change(kind, previous_by_id.get(event_id, {}), body)
 
 
 if __name__ == '__main__':
