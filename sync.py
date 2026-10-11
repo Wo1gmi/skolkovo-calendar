@@ -2,6 +2,7 @@
 import os
 import json
 import hashlib
+import re
 from datetime import datetime, timedelta, time
 from urllib.parse import unquote, urlparse, urlencode
 from zoneinfo import ZoneInfo
@@ -125,6 +126,14 @@ def load_schedule(session, first, last):
     return list(items.values())
 
 
+def group_one_only(item):
+    text = ' '.join(str(item.get(k) or '') for k in ('title', 'note')).lower()
+    groups = set()
+    for match in re.finditer(r'\b(?:гр\.?|групп(?:а|ы|е|у|ой)?)\s*(\d+(?:(?:\s*(?:и|/|,|&|-)\s*)(?:(?:гр\.?|групп(?:а|ы)?)\s*)?\d+)*)', text):
+        groups.update(re.findall(r'\d+', match.group(1)))
+    return groups == {'1'}
+
+
 def event_body(item, timezone):
     start = datetime.fromisoformat(item['start']).replace(tzinfo=timezone)
     end = datetime.fromisoformat(item['end']).replace(tzinfo=timezone)
@@ -133,7 +142,8 @@ def event_body(item, timezone):
     description = '\n'.join(f'{label}: {item[key]}' for key, label in (
         ('teachers', 'Преподаватель'), ('note', 'Примечание'),
         ('cohort', 'Поток'), ('schedule_title', 'Пара')) if item.get(key))
-    return {'summary': item['title'], 'location': item.get('room') or '',
+    return {'colorId': '8' if group_one_only(item) else None,
+            'summary': item['title'], 'location': item.get('room') or '',
             'description': description,
             'start': {'dateTime': start.isoformat(), 'timeZone': str(timezone)},
             'end': {'dateTime': end.isoformat(), 'timeZone': str(timezone)},
