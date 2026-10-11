@@ -1,5 +1,5 @@
 import unittest
-from lms_sync import parse_due, candidates, safe_url, future_assignments, TZ
+from lms_sync import parse_due, candidates, safe_url, future_assignments, TZ, assignment_body
 from datetime import datetime
 
 
@@ -14,6 +14,15 @@ class LMSTest(unittest.TestCase):
         self.assertTrue(candidates('Во время чтения делайте три типа заметок на полях.'))
         self.assertTrue(candidates('В рамках домашнего задания к заключительному занятию модуля'))
         self.assertEqual(candidates('Курс проводится осенью 2026 года.'), [])
+
+    def test_red_all_day_before_actual_deadline(self):
+        body = assignment_body({'course': 'Финансы', 'title': 'ДЗ', 'due': '2026-10-16T23:59:00+03:00', 'url': 'https://l.skolkovo.ru/'})
+        self.assertEqual(body['start'], {'date': '2026-10-15'})
+        self.assertEqual(body['end'], {'date': '2026-10-16'})
+        self.assertEqual(body['colorId'], '11')
+        self.assertIn('16.10.2026 23:59', body['description'])
+        body = assignment_body({'course': 'Финансы', 'title': 'ДЗ', 'due': '2027-01-01T12:00:00+03:00', 'url': 'https://l.skolkovo.ru/'})
+        self.assertEqual(body['start']['date'], '2026-12-31')
 
     def test_only_strictly_future_deadlines(self):
         now = datetime(2026, 10, 11, 12, 0, tzinfo=TZ)
