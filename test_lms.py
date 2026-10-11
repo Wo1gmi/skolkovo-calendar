@@ -24,6 +24,14 @@ class LMSTest(unittest.TestCase):
         body = assignment_body({'course': 'Финансы', 'title': 'ДЗ', 'due': '2027-01-01T12:00:00+03:00', 'url': 'https://l.skolkovo.ru/'})
         self.assertEqual(body['start']['date'], '2026-12-31')
 
+    def test_description_has_separate_clickable_url(self):
+        url = 'https://l.skolkovo.ru/mod/assign/view.php?id=35342'
+        body = assignment_body({'course': 'Финансы', 'title': 'ДЗ',
+                                'due': '2026-10-16T23:59:00+03:00', 'url': url})
+        self.assertEqual(len(body['description'].splitlines()), 3)
+        self.assertEqual(body['description'].splitlines()[-1], url)
+        self.assertNotIn(r'\n', body['description'])
+
     def test_only_strictly_future_deadlines(self):
         now = datetime(2026, 10, 11, 12, 0, tzinfo=TZ)
         items = [{'id': 'past', 'due': '2026-10-10T23:59:00+03:00'},
