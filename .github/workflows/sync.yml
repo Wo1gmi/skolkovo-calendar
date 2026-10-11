@@ -8,6 +8,10 @@ on:
         description: Write changes to calendar
         type: boolean
         default: false
+      reset_colors:
+        description: Apply dictionary colors once (overwrite manual colors)
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -25,6 +29,7 @@ jobs:
       GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
       SCHEDULE_TIMEZONE: ${{ vars.SCHEDULE_TIMEZONE || 'Europe/Moscow' }}
       APPLY: ${{ github.event_name == 'workflow_dispatch' && inputs.apply || vars.SYNC_ENABLED == 'true' }}
+      RESET_COLORS: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_colors || false }}
       ENABLE_DELETIONS: ${{ vars.ENABLE_DELETIONS }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
