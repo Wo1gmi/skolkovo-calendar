@@ -1,0 +1,36 @@
+name: Schedule sync
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Write changes to calendar
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: skolkovo-calendar
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.event_name == 'workflow_dispatch' || vars.SYNC_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SKOLKOVO_EMAIL: ${{ secrets.SKOLKOVO_EMAIL }}
+      SKOLKOVO_PASSWORD: ${{ secrets.SKOLKOVO_PASSWORD }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+      SCHEDULE_TIMEZONE: ${{ vars.SCHEDULE_TIMEZONE || 'Europe/Moscow' }}
+      APPLY: ${{ github.event_name == 'workflow_dispatch' && inputs.apply || vars.SYNC_ENABLED == 'true' }}
+      ENABLE_DELETIONS: ${{ vars.ENABLE_DELETIONS }}
+      LOOKAHEAD_DAYS: '365'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python sync.py
