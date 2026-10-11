@@ -1,5 +1,5 @@
 import unittest
-from lms_sync import parse_due, candidates, safe_url, future_assignments, TZ, assignment_body
+from lms_sync import parse_due, candidates, safe_url, future_assignments, TZ, assignment_body, assignment_changed
 from datetime import datetime
 
 
@@ -31,6 +31,18 @@ class LMSTest(unittest.TestCase):
         self.assertEqual(len(body['description'].splitlines()), 3)
         self.assertEqual(body['description'].splitlines()[-1], url)
         self.assertNotIn(r'\n', body['description'])
+
+    def test_notifications_ignore_presentation_changes(self):
+        assignment = {'course': 'Финансы', 'title': 'ДЗ',
+                      'due': '2026-10-16T23:59:00+03:00',
+                      'url': 'https://l.skolkovo.ru/mod/assign/view.php?id=35342'}
+        old = assignment_body(assignment)
+        old['description'] = old['description'].replace('\n', r'\n')
+        old['colorId'] = '5'
+        self.assertFalse(assignment_changed(assignment, old))
+        self.assertTrue(assignment_changed(dict(assignment, due='2026-10-17T23:59:00+03:00'), old))
+        self.assertTrue(assignment_changed(dict(assignment, title='ДЗ 2'), old))
+        self.assertTrue(assignment_changed(assignment, None))
 
     def test_only_strictly_future_deadlines(self):
         now = datetime(2026, 10, 11, 12, 0, tzinfo=TZ)
