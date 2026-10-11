@@ -11,7 +11,7 @@
     },
     {
       "subject": "Корпоративные финансы",
-      "color_id": "9",
+      "color_id": "5",
       "aliases": [
         "корпоративные финансы",
         "corporate finance"
@@ -56,7 +56,7 @@
     },
     {
       "subject": "Стратегический менеджмент",
-      "color_id": "10",
+      "color_id": "3",
       "aliases": [
         "стратегический менеджмент",
         "strategic management"
@@ -101,7 +101,7 @@
     },
     {
       "subject": "Великие книги: бизнес",
-      "color_id": "1",
+      "color_id": "6",
       "aliases": [
         "великие книги"
       ]
