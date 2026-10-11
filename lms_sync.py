@@ -169,6 +169,21 @@ def future_assignments(assignments, now=None):
     return [a for a in assignments if datetime.fromisoformat(a['due']) > now]
 
 
+def assignment_body(assignment):
+    due = datetime.fromisoformat(assignment['due']).astimezone(TZ)
+    day = due.date() - timedelta(days=1)
+    return {
+        'summary': 'Сдать: ' + assignment['course'] + ' — ' + assignment['title'],
+        'colorId': '11',
+        'description': 'Срок сдачи: ' + due.strftime('%d.%m.%Y %H:%M') +
+                       ' (Москва).\\nСобытие размещено за день до дедлайна.\\n' + assignment['url'],
+        'start': {'date': day.isoformat()},
+        'end': {'date': due.date().isoformat()},
+        'reminders': {'useDefault': False, 'overrides': [
+            {'method': 'popup', 'minutes': 1440}]},
+    }
+
+
 def sync_exact(assignments):
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
@@ -191,11 +206,12 @@ def sync_exact(assignments):
         old = current.get(assignment['id'])
         private = dict((old or {}).get('extendedProperties', {}).get('private', {}))
         private.update(sync_source=MARKER, source_id=assignment['id'])
-        body = {'summary': 'Сдать: ' + assignment['course'] + ' — ' + assignment['title'],
-                'description': 'Дедлайн из LMS. Материалы и отправка ответа:\n' + assignment['url'],
-                'start': {'dateTime': due.isoformat(), 'timeZone': str(TZ)},
-                'end': {'dateTime': (due + timedelta(minutes=1)).isoformat(), 'timeZone': str(TZ)},
-                'reminders': {'useDefault': False, 'overrides': [{'method': 'popup', 'minutes': 4320}, {'method': 'popup', 'minutes': 1440}]}}
+        body = assignment_body(assignment)
+        if old:
+            # Clear timed fields when migrating existing events to all-day dates.
+            for field in ('start', 'end'):
+                if old.get(field, {}).get('dateTime'):
+                    body[field].update(dateTime=None, timeZone=None)
         digest = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
         changed = private.get('content_hash') != digest
         private['content_hash'] = digest
