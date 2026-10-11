@@ -192,11 +192,15 @@ def plan(items, existing, timezone, first, last, delete=False):
     actions = []
     for key, body in desired.items():
         previous = current.get(key)
-        digest = hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        # Color belongs to the user after creation; exclude it from source comparisons.
+        comparable = {k: v for k, v in body.items() if k != 'colorId'}
+        digest = hashlib.sha256(json.dumps(comparable, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         body['extendedProperties']['private']['content_hash'] = digest
         if previous is None:
             actions.append(('insert', None, body))
         elif previous['extendedProperties']['private'].get('content_hash') != digest:
+            # Omitting colorId from PATCH preserves even the user's default calendar color.
+            body.pop('colorId', None)
             actions.append(('patch', previous['id'], body))
     if delete:
         if not desired and current:
