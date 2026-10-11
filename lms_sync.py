@@ -176,7 +176,7 @@ def assignment_body(assignment):
         'summary': 'Сдать: ' + assignment['course'] + ' — ' + assignment['title'],
         'colorId': '11',
         'description': 'Срок сдачи: ' + due.strftime('%d.%m.%Y %H:%M') +
-                       ' (Москва).\\nСобытие размещено за день до дедлайна.\\n' + assignment['url'],
+                       ' (Москва).\nСобытие размещено за день до дедлайна.\n' + assignment['url'],
         'start': {'date': day.isoformat()},
         'end': {'date': due.date().isoformat()},
         'reminders': {'useDefault': False, 'overrides': [
