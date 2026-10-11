@@ -184,6 +184,23 @@ def assignment_body(assignment):
     }
 
 
+
+def assignment_changed(assignment, old):
+    if old is None:
+        return True
+    signature = hashlib.sha256(json.dumps(
+        {key: assignment[key] for key in ('course', 'title', 'due', 'url')},
+        sort_keys=True).encode()).hexdigest()
+    previous = old.get('extendedProperties', {}).get('private', {}).get('assignment_hash')
+    if previous:
+        return previous != signature
+    # Existing events predate source hashes: ignore presentation-only changes.
+    body = assignment_body(assignment)
+    normalize = lambda text: ' '.join(text.replace(r'\n', '\n').split())
+    return (old.get('summary') != body['summary'] or
+            normalize(old.get('description', '')) != normalize(body['description']))
+
+
 def sync_exact(assignments):
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
@@ -205,7 +222,12 @@ def sync_exact(assignments):
             continue
         old = current.get(assignment['id'])
         private = dict((old or {}).get('extendedProperties', {}).get('private', {}))
-        private.update(sync_source=MARKER, source_id=assignment['id'])
+        source_changed = assignment_changed(assignment, old)
+        source_hash = hashlib.sha256(json.dumps(
+            {key: assignment[key] for key in ('course', 'title', 'due', 'url')},
+            sort_keys=True).encode()).hexdigest()
+        metadata_changed = private.get('assignment_hash') != source_hash
+        private.update(sync_source=MARKER, source_id=assignment['id'], assignment_hash=source_hash)
         body = assignment_body(assignment)
         if old:
             # Clear timed fields when migrating existing events to all-day dates.
@@ -222,12 +244,12 @@ def sync_exact(assignments):
             event_id = hashlib.sha256((MARKER + assignment['id']).encode()).hexdigest()
             body['id'] = event_id
             api.insert(calendarId=calendar, body=body).execute()
-        elif changed:
+        elif changed or metadata_changed:
             event_id = old['id']
             api.patch(calendarId=calendar, eventId=event_id, body=body).execute()
         else:
             event_id = old['id']
-        if changed:
+        if source_changed:
             telegram(('📝 Новое задание' if old is None else '🔄 Изменён дедлайн/задание') + '\n' + body['summary'] + '\n' + due.strftime('%d.%m.%Y %H:%M') + '\n' + assignment['url'])
         # One reminder per threshold and deadline, with state in the private calendar.
         hours = (due - now).total_seconds() / 3600
