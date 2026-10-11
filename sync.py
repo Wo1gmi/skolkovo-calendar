@@ -3,6 +3,7 @@ import os
 import json
 import hashlib
 import re
+from pathlib import Path
 from datetime import datetime, timedelta, time
 from urllib.parse import unquote, urlparse, urlencode
 from zoneinfo import ZoneInfo
@@ -134,6 +135,33 @@ def group_one_only(item):
     return groups == {'1'}
 
 
+NORMAL_COLORS = ('1', '2', '3', '5', '7', '9', '10')
+SUBJECT_COLORS = json.loads(Path(__file__).with_name('subject_colors.json').read_text(encoding='utf-8'))['subjects']
+if any(entry['color_id'] not in NORMAL_COLORS for entry in SUBJECT_COLORS):
+    raise RuntimeError('Invalid subject color in dictionary')
+
+
+def normalize_title(value):
+    return re.sub(r'\s+', ' ', value.lower().replace('ё', 'е')).strip()
+
+
+def event_color(item):
+    text = normalize_title(' '.join(str(item.get(k) or '') for k in ('title', 'note')))
+    assessment = r'\b(?:тест\w*|контрольн\w*|итогов\w*|экзамен\w*|зачет\w*|проверочн\w*|рубежн\w*|quiz\w*|exam\w*|midterm\w*|final\w*|assessment\w*)\b'
+    if re.search(assessment, text):
+        return '11'
+    if group_one_only(item):
+        return '8'
+    title = normalize_title(item['title'])
+    for entry in SUBJECT_COLORS:
+        if any(normalize_title(alias) in title for alias in entry['aliases']):
+            return entry['color_id']
+    # New subjects receive a stable allowed color until added to the dictionary.
+    subject = re.split(r'\s*[·|]\s*|\b(?:гр\.|группа)\s*\d', title)[0].strip()
+    index = int(hashlib.sha256(subject.encode()).hexdigest(), 16) % len(NORMAL_COLORS)
+    return NORMAL_COLORS[index]
+
+
 def event_body(item, timezone):
     start = datetime.fromisoformat(item['start']).replace(tzinfo=timezone)
     end = datetime.fromisoformat(item['end']).replace(tzinfo=timezone)
@@ -142,7 +170,7 @@ def event_body(item, timezone):
     description = '\n'.join(f'{label}: {item[key]}' for key, label in (
         ('teachers', 'Преподаватель'), ('note', 'Примечание'),
         ('cohort', 'Поток'), ('schedule_title', 'Пара')) if item.get(key))
-    return {'colorId': '8' if group_one_only(item) else None,
+    return {'colorId': event_color(item),
             'summary': item['title'], 'location': item.get('room') or '',
             'description': description,
             'start': {'dateTime': start.isoformat(), 'timeZone': str(timezone)},
