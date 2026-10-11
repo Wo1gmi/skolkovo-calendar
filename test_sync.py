@@ -33,6 +33,18 @@ class SyncTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.run_plan([], [old], True)
 
+    def test_manual_color_survives_source_updates(self):
+        event = dict(self.run_plan([self.item], [])[0][2], id='google1', colorId='11')
+        self.assertEqual(self.run_plan([self.item], [event]), [])
+        for changes in ({'title': 'Новое название'}, {'room': 'Аудитория 2'},
+                        {'start': '2026-10-07 10:00:00', 'end': '2026-10-07 11:30:00'}):
+            action = self.run_plan([dict(self.item, **changes)], [event])[0]
+            self.assertEqual(action[:2], ('patch', 'google1'))
+            self.assertNotIn('colorId', action[2])
+        event.pop('colorId')
+        action = self.run_plan([dict(self.item, room='2')], [event])[0]
+        self.assertNotIn('colorId', action[2])
+
     def test_invalid_duration(self):
         with self.assertRaises(RuntimeError):
             event_body(dict(self.item, end=self.item['start']), self.tz)
