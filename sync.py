@@ -3,13 +3,20 @@ import os
 import json
 import hashlib
 from datetime import datetime, timedelta, time
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urlparse, urlencode
 from zoneinfo import ZoneInfo
 import requests
 
 PROGRAM = 'uvLzhep9c6NWCBtvRal2FKab2Ou1vHgp'
 BASE = 'https://sk.skolkovo.ru'
 MARKER = 'skolkovo_' + PROGRAM
+LOGIN_URL = 'https://id.skolkovo.ru/?' + urlencode({
+    'client_id': '12',
+    'redirect_uri': 'https://sk.skolkovo.ru/test_skolkovo_id_callback',
+    'response_type': 'code',
+    'return_url': 'https://www.skolkovo.ru/',
+    'scope': '',
+})
 
 
 def required(name):
@@ -37,7 +44,7 @@ def get_session():
     session = requests.Session()
     session.headers['User-Agent'] = 'Mozilla/5.0 SkolkovoCalendarSync/0.1'
     session.get('https://www.skolkovo.ru/?login=true', timeout=30).raise_for_status()
-    session.get('https://id.skolkovo.ru/', timeout=30).raise_for_status()
+    session.get(LOGIN_URL, timeout=30).raise_for_status()
     xsrf = next((c.value for c in session.cookies if c.name == 'XSRF-TOKEN'), None)
     if not xsrf:
         raise RuntimeError('Login adapter: XSRF cookie not found; login flow needs adjustment')
@@ -46,7 +53,7 @@ def get_session():
         'phone': '7', 'type': 'email', 'isCode': False, 'remember': False,
     }, headers={'X-XSRF-TOKEN': unquote(xsrf), 'X-Inertia': 'true',
                 'X-Requested-With': 'XMLHttpRequest',
-                'Origin': 'https://id.skolkovo.ru', 'Referer': 'https://id.skolkovo.ru/'},
+                'Origin': 'https://id.skolkovo.ru', 'Referer': LOGIN_URL},
         timeout=30)
     log_login_chain(response, 'submit')
     if response.status_code == 409:
