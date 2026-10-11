@@ -145,7 +145,13 @@ def normalize_title(value):
     return re.sub(r'\s+', ' ', value.lower().replace('ё', 'е')).strip()
 
 
+def educational_environment(item):
+    return bool(re.search(r'образова\w*\s+сред\w*', normalize_title(item['title'])))
+
+
 def event_color(item):
+    if educational_environment(item):
+        return '8'
     if group_one_only(item):
         return '8'
     text = normalize_title(' '.join(str(item.get(k) or '') for k in ('title', 'note')))
@@ -192,6 +198,7 @@ def plan(items, existing, timezone, first, last, delete=False, reset_colors=Fals
     actions = []
     for key, body in desired.items():
         previous = current.get(key)
+        force_gray = educational_environment(next(i for i in items if str(i['id']) == key))
         # Color belongs to the user after creation; exclude it from source comparisons.
         comparable = {k: v for k, v in body.items() if k != 'colorId'}
         digest = hashlib.sha256(json.dumps(comparable, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -199,9 +206,9 @@ def plan(items, existing, timezone, first, last, delete=False, reset_colors=Fals
         if previous is None:
             actions.append(('insert', None, body))
         elif (previous['extendedProperties']['private'].get('content_hash') != digest
-              or (reset_colors and previous.get('colorId') != body.get('colorId'))):
+              or ((reset_colors or force_gray) and previous.get('colorId') != body.get('colorId'))):
             # Omitting colorId from PATCH preserves even the user's default calendar color.
-            if not reset_colors:
+            if not reset_colors and not force_gray:
                 body.pop('colorId', None)
             actions.append(('patch', previous['id'], body))
     if delete:
