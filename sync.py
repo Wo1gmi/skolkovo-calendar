@@ -66,6 +66,22 @@ def get_session():
         log_login_chain(response, 'redirect')
     if response.status_code >= 400:
         raise RuntimeError('Login failed, HTTP ' + str(response.status_code))
+    candidates = [unquote(c.value).strip().strip('"') for c in session.cookies
+                  if c.name == 'auth._token.local'
+                  and c.domain.lstrip('.') in {'www.skolkovo.ru', 'skolkovo.ru'}]
+    for value in candidates:
+        token = value[7:] if value.startswith('Bearer ') else value
+        if token.count('.') == 2 and not any(c.isspace() for c in token):
+            session.headers.update({
+                'Authorization': 'Bearer ' + token,
+                'Origin': 'https://www.skolkovo.ru',
+                'Referer': 'https://www.skolkovo.ru/',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            })
+            print('API auth cookie: found')
+            return session
+    print('API auth cookie: not found')
     # The observed login flow puts the API token in /autologin/<token>.
     for hop in reversed([*response.history, response]):
         path = urlparse(hop.url).path
