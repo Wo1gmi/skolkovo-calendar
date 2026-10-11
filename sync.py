@@ -67,12 +67,18 @@ def get_session():
     if response.status_code >= 400:
         raise RuntimeError('Login failed, HTTP ' + str(response.status_code))
     # The observed login flow puts the API token in /autologin/<token>.
-    for hop in [*response.history, response]:
+    for hop in reversed([*response.history, response]):
         path = urlparse(hop.url).path
         if '/autologin/' in path:
             token = unquote(path.split('/autologin/', 1)[1].split('/')[0])
             if token.count('.') == 2:
-                session.headers['Authorization'] = 'Bearer ' + token
+                session.headers.update({
+                    'Authorization': 'Bearer ' + token,
+                    'Origin': 'https://www.skolkovo.ru',
+                    'Referer': 'https://www.skolkovo.ru/',
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                })
                 return session
     raise RuntimeError('Login adapter: API token not found; callback flow needs adjustment')
 
