@@ -26,6 +26,8 @@ jobs:
       SCHEDULE_TIMEZONE: ${{ vars.SCHEDULE_TIMEZONE || 'Europe/Moscow' }}
       APPLY: ${{ github.event_name == 'workflow_dispatch' && inputs.apply || vars.SYNC_ENABLED == 'true' }}
       ENABLE_DELETIONS: ${{ vars.ENABLE_DELETIONS }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       LOOKAHEAD_DAYS: '365'
     steps:
       - uses: actions/checkout@v4
