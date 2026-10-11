@@ -178,7 +178,7 @@ def event_body(item, timezone):
             'extendedProperties': {'private': {'sync_source': MARKER, 'source_id': str(item['id'])}}}
 
 
-def plan(items, existing, timezone, first, last, delete=False):
+def plan(items, existing, timezone, first, last, delete=False, reset_colors=False):
     desired = {str(i['id']): event_body(i, timezone) for i in items}
     current = {}
     for event in existing:
@@ -198,9 +198,11 @@ def plan(items, existing, timezone, first, last, delete=False):
         body['extendedProperties']['private']['content_hash'] = digest
         if previous is None:
             actions.append(('insert', None, body))
-        elif previous['extendedProperties']['private'].get('content_hash') != digest:
+        elif (previous['extendedProperties']['private'].get('content_hash') != digest
+              or (reset_colors and previous.get('colorId') != body.get('colorId'))):
             # Omitting colorId from PATCH preserves even the user's default calendar color.
-            body.pop('colorId', None)
+            if not reset_colors:
+                body.pop('colorId', None)
             actions.append(('patch', previous['id'], body))
     if delete:
         if not desired and current:
@@ -282,7 +284,8 @@ def main():
         if not token:
             break
     actions = plan(items, existing, timezone, first, last,
-                   delete=os.environ.get('ENABLE_DELETIONS') == 'true')
+                   delete=os.environ.get('ENABLE_DELETIONS') == 'true',
+                   reset_colors=os.environ.get('RESET_COLORS') == 'true')
     apply = os.environ.get('APPLY') == 'true'
     counts = {kind: sum(a[0] == kind for a in actions) for kind in ('insert', 'patch', 'delete')}
     print('Lessons:', len(items), 'planned:', counts, 'apply:', apply)
