@@ -19,6 +19,19 @@ def required(name):
     return value
 
 
+def log_login_chain(response, stage):
+    # Only fixed route names and statuses are logged, never query values or tokens.
+    allowed = {'/', '/account', '/test_skolkovo_id_callback'}
+    for hop in [*response.history, response]:
+        parsed = urlparse(hop.url)
+        route = parsed.path if parsed.path in allowed else '[hidden route]'
+        if parsed.path.startswith('/autologin/'):
+            route = '/autologin/[hidden]'
+        host = parsed.hostname if parsed.hostname in {
+            'id.skolkovo.ru', 'sk.skolkovo.ru', 'www.skolkovo.ru'} else '[other host]'
+        print('Login stage:', stage, 'HTTP:', hop.status_code, 'host:', host, 'route:', route)
+
+
 def get_session():
     # This adapter is based on observed requests, not yet verified live.
     session = requests.Session()
@@ -35,6 +48,7 @@ def get_session():
                 'X-Requested-With': 'XMLHttpRequest',
                 'Origin': 'https://id.skolkovo.ru', 'Referer': 'https://id.skolkovo.ru/'},
         timeout=30)
+    log_login_chain(response, 'submit')
     if response.status_code == 409:
         location = response.headers.get('X-Inertia-Location', '')
         if location.startswith('/'):
@@ -42,6 +56,7 @@ def get_session():
         if urlparse(location).hostname not in {'id.skolkovo.ru', 'sk.skolkovo.ru', 'www.skolkovo.ru'}:
             raise RuntimeError('Unexpected login redirect')
         response = session.get(location, timeout=30)
+        log_login_chain(response, 'redirect')
     if response.status_code >= 400:
         raise RuntimeError('Login failed, HTTP ' + str(response.status_code))
     # The observed login flow puts the API token in /autologin/<token>.
