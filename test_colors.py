@@ -11,7 +11,9 @@ class ColorsTest(unittest.TestCase):
         self.assertEqual(event_color({'title': 'Микроэкономика гр.1'}), '8')
         self.assertEqual(event_color({'title': 'Микроэкономика гр.1 и гр.2'}), '7')
         for word in ('Тест', 'Контрольная', 'Итоговое занятие', 'Экзамен', 'Зачёт', 'Final exam'):
-            self.assertEqual(event_color({'title': 'Микроэкономика гр.1', 'note': word}), '11')
+            self.assertEqual(event_color({'title': 'Микроэкономика гр.1', 'note': word}), '8')
+            self.assertEqual(event_color({'title': 'Микроэкономика гр.1 и гр.2', 'note': word}), '11')
+            self.assertEqual(event_color({'title': 'Микроэкономика гр.2', 'note': word}), '11')
 
     def test_unknown_stable_allowed(self):
         item = {'title': 'Новый предмет'}
