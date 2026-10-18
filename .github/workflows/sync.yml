@@ -4,6 +4,14 @@ on:
     - cron: '0 6,18 * * *'
   workflow_dispatch:
     inputs:
+      audit_day:
+        description: Optional day for read-only comparison (YYYY-MM-DD)
+        type: string
+        default: ''
+      audit_subject:
+        description: Optional subject for read-only comparison
+        type: string
+        default: ''
       audit:
         description: Read-only audit without calendar writes or Telegram
         type: boolean
@@ -42,6 +50,8 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       LOOKAHEAD_DAYS: '365'
+      AUDIT_DAY: ${{ inputs.audit_day }}
+      AUDIT_SUBJECT: ${{ inputs.audit_subject }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

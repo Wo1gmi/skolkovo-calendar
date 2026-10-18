@@ -9,7 +9,7 @@ from urllib.parse import unquote, urlparse, urlencode
 from zoneinfo import ZoneInfo
 import requests
 from schedule_rules import excluded_title
-from notifications import change_message
+from notifications import change_message, description_fields, moment
 
 PROGRAM = 'uvLzhep9c6NWCBtvRal2FKab2Ou1vHgp'
 BASE = 'https://sk.skolkovo.ru'
@@ -265,6 +265,36 @@ def send_telegram(message):
             raise RuntimeError('Telegram notification failed; check bot secrets')
 
 
+def audit_calendar_content(items, existing, timezone, target_day='', target_subject=''):
+    """Return booleans and counters only; never publish source/calendar text."""
+    by_source = {e.get('extendedProperties', {}).get('private', {}).get('source_id'): e
+                 for e in existing if e.get('extendedProperties', {}).get('private', {}).get('sync_source') == MARKER}
+    mismatches = {field: 0 for field in ('summary', 'description', 'location', 'start', 'end')}
+    result = {'compared': 0, 'missing': 0, 'field_mismatches': mismatches, 'target_checks': []}
+    for item in items:
+        if excluded_title(item['title']):
+            continue
+        expected = event_body(item, timezone)
+        actual = by_source.get(str(item['id']))
+        if actual is None:
+            result['missing'] += 1
+            continue
+        matches = {field: (actual.get(field) or '') == (expected.get(field) or '')
+                   for field in ('summary', 'description', 'location')}
+        matches.update({field: moment(actual, field) == moment(expected, field) for field in ('start', 'end')})
+        result['compared'] += 1
+        for field, equal in matches.items():
+            mismatches[field] += not equal
+        if (target_day and moment(expected, 'start').astimezone(timezone).date().isoformat() == target_day
+                and normalize_title(item['title'].split('·', 1)[0]) == normalize_title(target_subject)):
+            result['target_checks'].append({'fields_match': matches,
+                'source_title_online': 'онлайн' in item['title'].casefold(),
+                'calendar_title_online': 'онлайн' in actual.get('summary', '').casefold(),
+                'source_note_online': 'онлайн' in str(item.get('note') or '').casefold(),
+                'calendar_note_online': 'онлайн' in description_fields(actual).get('Примечание', '').casefold()})
+    return result
+
+
 def main(audit=False):
     timezone = ZoneInfo(required('SCHEDULE_TIMEZONE'))
     first = datetime.now(timezone).date()
@@ -312,6 +342,8 @@ def main(audit=False):
                             change_message(kind, previous_by_id.get(event_id, {}), body) is not None
                             for kind, event_id, body in actions)
         # Logs contain counts only: no subjects, names, notes, IDs or message drafts.
+        print('Content audit:', json.dumps(audit_calendar_content(items, existing, timezone,
+              os.environ.get('AUDIT_DAY', ''), os.environ.get('AUDIT_SUBJECT', ''))))
         print('Audit totals:', json.dumps({'source_events': len(items),
               'calendar_events': len(existing), 'pending_notifications': notifications,
               'silent_calendar_updates': len(actions) - notifications}))
