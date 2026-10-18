@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, time
 from urllib.parse import unquote, urlparse, urlencode
 from zoneinfo import ZoneInfo
 import requests
+from schedule_rules import excluded_title
 from notifications import change_message
 
 PROGRAM = 'uvLzhep9c6NWCBtvRal2FKab2Ou1vHgp'
@@ -196,7 +197,9 @@ def event_body(item, timezone):
 
 
 def plan(items, existing, timezone, first, last, delete=False, reset_colors=False):
-    desired = {str(i['id']): event_body(i, timezone) for i in items}
+    excluded_ids = {str(i['id']) for i in items if excluded_title(i['title'])}
+    desired = {str(i['id']): event_body(i, timezone) for i in items
+               if str(i['id']) not in excluded_ids}
     current = {}
     for event in existing:
         private = event.get('extendedProperties', {}).get('private', {})
@@ -206,7 +209,11 @@ def plan(items, existing, timezone, first, last, delete=False, reset_colors=Fals
         if not key or key in current:
             raise RuntimeError('Duplicate or missing managed source ID')
         current[key] = event
-    actions = []
+    # Explicit exclusions remove previously imported events, including past ones.
+    # Only managed events are eligible; ordinary source deletions keep their guard.
+    excluded_keys = {key for key, event in current.items() if key not in desired and
+                     (key in excluded_ids or excluded_title(event.get('summary', '')))}
+    actions = [('delete', current[key]['id'], None) for key in sorted(excluded_keys)]
     for key, body in desired.items():
         previous = current.get(key)
         force_color = (educational_environment({'title': body['summary']})
@@ -226,11 +233,11 @@ def plan(items, existing, timezone, first, last, delete=False, reset_colors=Fals
                 body.pop('colorId', None)
             actions.append(('patch', previous['id'], body))
     if delete:
-        if not desired and current:
+        if not desired and set(current) - excluded_keys:
             raise RuntimeError('Empty source: refusing mass deletion')
         for key, event in current.items():
             raw = event.get('start', {}).get('dateTime')
-            if key not in desired and raw and first <= datetime.fromisoformat(raw).astimezone(timezone).date() < last:
+            if key not in desired and key not in excluded_keys and raw and first <= datetime.fromisoformat(raw).astimezone(timezone).date() < last:
                 actions.append(('delete', event['id'], None))
     return actions
 
@@ -295,10 +302,14 @@ def main(audit=False):
                    reset_colors=os.environ.get('RESET_COLORS') == 'true')
     apply = not audit and os.environ.get('APPLY') == 'true'
     counts = {kind: sum(a[0] == kind for a in actions) for kind in ('insert', 'patch', 'delete')}
-    print('Lessons:', len(items), 'planned:', counts, 'apply:', apply)
+    print('Lessons:', len(items), 'excluded:', sum(excluded_title(i['title']) for i in items), 'planned:', counts, 'apply:', apply)
     previous_by_id = {e['id']: e for e in existing}
+    excluded_source_ids = {str(i['id']) for i in items if excluded_title(i['title'])}
+    silent_deletions = {e['id'] for e in existing if excluded_title(e.get('summary', '')) or
+                        e.get('extendedProperties', {}).get('private', {}).get('source_id') in excluded_source_ids}
     if audit:
-        notifications = sum(change_message(kind, previous_by_id.get(event_id, {}), body) is not None
+        notifications = sum(not (kind == 'delete' and event_id in silent_deletions) and
+                            change_message(kind, previous_by_id.get(event_id, {}), body) is not None
                             for kind, event_id, body in actions)
         # Logs contain counts only: no subjects, names, notes, IDs or message drafts.
         print('Audit totals:', json.dumps({'source_events': len(items),
@@ -314,7 +325,7 @@ def main(audit=False):
                 kwargs['body'] = body
             getattr(api, kind)(**kwargs).execute()
             # First import creates the baseline without hundreds of alerts.
-            if existing:
+            if existing and not (kind == 'delete' and event_id in silent_deletions):
                 notify_change(kind, previous_by_id.get(event_id, {}), body)
     return counts
 

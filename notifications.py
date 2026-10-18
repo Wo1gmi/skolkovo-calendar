@@ -2,6 +2,7 @@
 import re
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from schedule_rules import excluded_title
 
 MONTHS = ('января февраля марта апреля мая июня июля августа сентября '
           'октября ноября декабря').split()
@@ -77,6 +78,8 @@ def when(event):
 def change_message(kind, previous, body):
     event = previous if kind == 'delete' else body
     title = event.get('summary') or 'Занятие'
+    if excluded_title(title):
+        return None
     if kind in ('delete', 'insert'):
         prefix = '❌ Отменено: ' if kind == 'delete' else '➕ Новое занятие: '
         return prefix + title + '\n' + when(event)
