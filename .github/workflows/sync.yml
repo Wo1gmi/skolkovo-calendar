@@ -4,6 +4,10 @@ on:
     - cron: '0 6,18 * * *'
   workflow_dispatch:
     inputs:
+      verify:
+        description: Run all tests, update calendar and send Telegram report
+        type: boolean
+        default: false
       apply:
         description: Write changes to calendar
         type: boolean
@@ -40,5 +44,9 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt -r lms-requirements.txt
-      - run: python -m unittest test_sync test_colors test_notifications
-      - run: python sync.py
+      - if: ${{ !inputs.verify }}
+        run: python -m unittest test_sync test_colors test_notifications
+      - if: ${{ !inputs.verify }}
+        run: python sync.py
+      - if: ${{ inputs.verify }}
+        run: python run_checks.py
