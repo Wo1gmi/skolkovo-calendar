@@ -13,6 +13,7 @@ from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
 
 import requests
+from notifications import format_date
 from bs4 import BeautifulSoup
 
 BASE = 'https://l.skolkovo.ru'
@@ -201,6 +202,13 @@ def assignment_changed(assignment, old):
             normalize(old.get('description', '')) != normalize(body['description']))
 
 
+def assignment_reminder(assignment, hours):
+    due = datetime.fromisoformat(assignment['due'])
+    return ('⏳ До сдачи осталось примерно ' + str(max(1, round(hours))) + ' ч.\n' +
+            'Сдать до: ' + format_date(due) + '\n' +
+            assignment_body(assignment)['summary'] + '\n' + assignment['url'])
+
+
 def sync_exact(assignments):
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
@@ -250,19 +258,20 @@ def sync_exact(assignments):
         else:
             event_id = old['id']
         if source_changed:
-            telegram(('📝 Новое задание' if old is None else '🔄 Изменён дедлайн/задание') + '\n' + body['summary'] + '\n' + due.strftime('%d.%m.%Y %H:%M') + '\n' + assignment['url'])
+            telegram(('📝 Новое задание' if old is None else '🔄 Изменён дедлайн/задание') + '\n' + body['summary'] + '\n' + format_date(due) + '\n' + assignment['url'])
         # One reminder per threshold and deadline, with state in the private calendar.
         hours = (due - now).total_seconds() / 3600
         bucket = '24' if hours <= 24 else '72' if hours <= 72 else None
         key = 'reminded_' + bucket if bucket else None
         if key and private.get(key) != due.isoformat():
-            telegram('⏳ До сдачи осталось примерно ' + str(max(1, round(hours))) + ' ч.\n' + body['summary'] + '\n' + assignment['url'])
+            telegram(assignment_reminder(assignment, hours))
             private[key] = due.isoformat()
             api.patch(calendarId=calendar, eventId=event_id, body={'extendedProperties': {'private': private}}).execute()
 
 
 def main():
-    config = json.loads(open('lms_courses.json', encoding='utf-8').read())
+    with open('lms_courses.json', encoding='utf-8') as stream:
+        config = json.load(stream)
     client = LMS()
     client.login()
     assignments, reviews, failures = collect(client, config['course_ids'])
@@ -275,7 +284,7 @@ def main():
         for assignment in assignments:
             due = datetime.fromisoformat(assignment['due'])
             telegram('📝 Задание: ' + assignment['course'] + ' — ' + assignment['title'] +
-                     '\nСдать до: ' + due.strftime('%d.%m.%Y %H:%M') +
+                     '\nСдать до: ' + format_date(due) +
                      '\n' + assignment['url'])
     # Undated candidates and download failures stay out of Telegram.
 

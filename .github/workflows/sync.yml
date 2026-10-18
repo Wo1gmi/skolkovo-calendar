@@ -4,6 +4,14 @@ on:
     - cron: '0 6,18 * * *'
   workflow_dispatch:
     inputs:
+      audit:
+        description: Read-only audit without calendar writes or Telegram
+        type: boolean
+        default: false
+      verify:
+        description: Run all tests, update calendar and send Telegram report
+        type: boolean
+        default: false
       apply:
         description: Write changes to calendar
         type: boolean
@@ -28,7 +36,7 @@ jobs:
       GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
       GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
       SCHEDULE_TIMEZONE: ${{ vars.SCHEDULE_TIMEZONE || 'Europe/Moscow' }}
-      APPLY: ${{ github.event_name == 'workflow_dispatch' && inputs.apply || vars.SYNC_ENABLED == 'true' }}
+      APPLY: ${{ (github.event_name == 'workflow_dispatch' && inputs.apply && !inputs.audit) || (github.event_name == 'schedule' && vars.SYNC_ENABLED == 'true') }}
       RESET_COLORS: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_colors || false }}
       ENABLE_DELETIONS: ${{ vars.ENABLE_DELETIONS }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -39,5 +47,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install -r requirements.txt
-      - run: python sync.py
+      - run: pip install -r requirements.txt -r lms-requirements.txt
+      - if: ${{ !inputs.verify && !inputs.audit }}
+        run: python -m unittest discover
+      - if: ${{ !inputs.verify && !inputs.audit }}
+        run: python sync.py
+      - if: ${{ inputs.verify && !inputs.audit }}
+        run: python run_checks.py
+      - if: ${{ inputs.audit }}
+        run: python run_checks.py --preview

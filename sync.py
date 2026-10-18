@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, time
 from urllib.parse import unquote, urlparse, urlencode
 from zoneinfo import ZoneInfo
 import requests
+from schedule_rules import excluded_title
+from notifications import change_message
 
 PROGRAM = 'uvLzhep9c6NWCBtvRal2FKab2Ou1vHgp'
 BASE = 'https://sk.skolkovo.ru'
@@ -176,13 +178,16 @@ def event_color(item):
 
 
 def event_body(item, timezone):
-    start = datetime.fromisoformat(item['start']).replace(tzinfo=timezone)
-    end = datetime.fromisoformat(item['end']).replace(tzinfo=timezone)
+    def local_time(raw):
+        value = datetime.fromisoformat(raw)
+        return value.replace(tzinfo=timezone) if value.tzinfo is None else value.astimezone(timezone)
+    start = local_time(item['start'])
+    end = local_time(item['end'])
     if end <= start:
         raise RuntimeError('Invalid lesson duration')
     description = '\n'.join(f'{label}: {item[key]}' for key, label in (
         ('teachers', 'Преподаватель'), ('note', 'Примечание'),
-        ('cohort', 'Поток'), ('schedule_title', 'Пара')) if item.get(key))
+        ('schedule_title', 'Пара')) if item.get(key))
     return {'colorId': event_color(item),
             'summary': item['title'], 'location': item.get('room') or '',
             'description': description,
@@ -192,7 +197,9 @@ def event_body(item, timezone):
 
 
 def plan(items, existing, timezone, first, last, delete=False, reset_colors=False):
-    desired = {str(i['id']): event_body(i, timezone) for i in items}
+    excluded_ids = {str(i['id']) for i in items if excluded_title(i['title'])}
+    desired = {str(i['id']): event_body(i, timezone) for i in items
+               if str(i['id']) not in excluded_ids}
     current = {}
     for event in existing:
         private = event.get('extendedProperties', {}).get('private', {})
@@ -202,7 +209,11 @@ def plan(items, existing, timezone, first, last, delete=False, reset_colors=Fals
         if not key or key in current:
             raise RuntimeError('Duplicate or missing managed source ID')
         current[key] = event
-    actions = []
+    # Explicit exclusions remove previously imported events, including past ones.
+    # Only managed events are eligible; ordinary source deletions keep their guard.
+    excluded_keys = {key for key, event in current.items() if key not in desired and
+                     (key in excluded_ids or excluded_title(event.get('summary', '')))}
+    actions = [('delete', current[key]['id'], None) for key in sorted(excluded_keys)]
     for key, body in desired.items():
         previous = current.get(key)
         force_color = (educational_environment({'title': body['summary']})
@@ -222,11 +233,11 @@ def plan(items, existing, timezone, first, last, delete=False, reset_colors=Fals
                 body.pop('colorId', None)
             actions.append(('patch', previous['id'], body))
     if delete:
-        if not desired and current:
+        if not desired and set(current) - excluded_keys:
             raise RuntimeError('Empty source: refusing mass deletion')
         for key, event in current.items():
             raw = event.get('start', {}).get('dateTime')
-            if key not in desired and raw and first <= datetime.fromisoformat(raw).astimezone(timezone).date() < last:
+            if key not in desired and key not in excluded_keys and raw and first <= datetime.fromisoformat(raw).astimezone(timezone).date() < last:
                 actions.append(('delete', event['id'], None))
     return actions
 
@@ -237,29 +248,15 @@ def notify_change(kind, previous, body):
     chat = os.environ.get('TELEGRAM_CHAT_ID')
     if not token or not chat:
         return
-    def when(event):
-        raw = event.get('start', {}).get('dateTime', '')
-        return datetime.fromisoformat(raw).strftime('%d.%m.%Y %H:%M') if raw else 'время не указано'
-    if kind == 'delete':
-        message = '❌ Отменено: ' + previous.get('summary', 'Занятие') + '\\n' + when(previous)
-    elif kind == 'insert':
-        message = '➕ Новое занятие: ' + body['summary'] + '\\n' + when(body)
-    else:
-        differences = []
-        for field, label in [('summary', 'Название'), ('location', 'Аудитория'),
-                             ('description', 'Описание')]:
-            if (previous.get(field) or '') != (body.get(field) or ''):
-                differences.append(label + ': ' + str(previous.get(field) or '—') +
-                                   ' → ' + str(body.get(field) or '—'))
-        for field, label in [('start', 'Начало'), ('end', 'Конец')]:
-            old = previous.get(field, {}).get('dateTime')
-            new = body.get(field, {}).get('dateTime')
-            if old and new and datetime.fromisoformat(old) != datetime.fromisoformat(new):
-                fmt = lambda value: datetime.fromisoformat(value).strftime('%d.%m.%Y %H:%M')
-                differences.append(label + ': ' + fmt(old) + ' → ' + fmt(new))
-        if not differences:
-            return
-        message = '🔄 Изменено: ' + body['summary'] + '\\n' + '\\n'.join(differences)
+    message = change_message(kind, previous, body)
+    if not message:
+        return
+    send_telegram(message)
+
+
+def send_telegram(message):
+    token = required('TELEGRAM_BOT_TOKEN')
+    chat = required('TELEGRAM_CHAT_ID')
     for offset in range(0, len(message), 3500):
         response = requests.post('https://api.telegram.org/bot' + token + '/sendMessage',
                                  json={'chat_id': chat, 'text': message[offset:offset+3500]},
@@ -268,7 +265,7 @@ def notify_change(kind, previous, body):
             raise RuntimeError('Telegram notification failed; check bot secrets')
 
 
-def main():
+def main(audit=False):
     timezone = ZoneInfo(required('SCHEDULE_TIMEZONE'))
     first = datetime.now(timezone).date()
     # Rolling horizon, not a one-week import. Extend once API availability is verified.
@@ -303,10 +300,22 @@ def main():
     actions = plan(items, existing, timezone, first, last,
                    delete=os.environ.get('ENABLE_DELETIONS') == 'true',
                    reset_colors=os.environ.get('RESET_COLORS') == 'true')
-    apply = os.environ.get('APPLY') == 'true'
+    apply = not audit and os.environ.get('APPLY') == 'true'
     counts = {kind: sum(a[0] == kind for a in actions) for kind in ('insert', 'patch', 'delete')}
-    print('Lessons:', len(items), 'planned:', counts, 'apply:', apply)
+    print('Lessons:', len(items), 'excluded:', sum(excluded_title(i['title']) for i in items), 'planned:', counts, 'apply:', apply)
     previous_by_id = {e['id']: e for e in existing}
+    excluded_source_ids = {str(i['id']) for i in items if excluded_title(i['title'])}
+    silent_deletions = {e['id'] for e in existing if excluded_title(e.get('summary', '')) or
+                        e.get('extendedProperties', {}).get('private', {}).get('source_id') in excluded_source_ids}
+    if audit:
+        notifications = sum(not (kind == 'delete' and event_id in silent_deletions) and
+                            change_message(kind, previous_by_id.get(event_id, {}), body) is not None
+                            for kind, event_id, body in actions)
+        # Logs contain counts only: no subjects, names, notes, IDs or message drafts.
+        print('Audit totals:', json.dumps({'source_events': len(items),
+              'calendar_events': len(existing), 'pending_notifications': notifications,
+              'silent_calendar_updates': len(actions) - notifications}))
+        return counts
     if apply:
         for kind, event_id, body in actions:
             kwargs = {'calendarId': calendar}
@@ -316,8 +325,9 @@ def main():
                 kwargs['body'] = body
             getattr(api, kind)(**kwargs).execute()
             # First import creates the baseline without hundreds of alerts.
-            if existing:
+            if existing and not (kind == 'delete' and event_id in silent_deletions):
                 notify_change(kind, previous_by_id.get(event_id, {}), body)
+    return counts
 
 
 if __name__ == '__main__':
