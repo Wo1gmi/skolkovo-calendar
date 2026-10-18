@@ -298,17 +298,12 @@ def main(audit=False):
     print('Lessons:', len(items), 'planned:', counts, 'apply:', apply)
     previous_by_id = {e['id']: e for e in existing}
     if audit:
-        for item in items:
-            if 'искусственный интеллект' in item['title'].lower():
-                print('SOURCE SAMPLE:', json.dumps({key: item.get(key) for key in
-                      ('id', 'title', 'teachers', 'note', 'room', 'start', 'end', 'schedule_title')}, ensure_ascii=False))
-                for event in existing:
-                    if event.get('extendedProperties', {}).get('private', {}).get('source_id') == str(item['id']):
-                        print('CALENDAR SAMPLE:', json.dumps({key: event.get(key) for key in
-                              ('summary', 'description', 'location', 'start', 'end')}, ensure_ascii=False))
-        for kind, event_id, body in actions:
-            previous = previous_by_id.get(event_id, {})
-            print('PREVIEW:', json.dumps({'action': kind, 'notification': change_message(kind, previous, body)}, ensure_ascii=False))
+        notifications = sum(change_message(kind, previous_by_id.get(event_id, {}), body) is not None
+                            for kind, event_id, body in actions)
+        # Logs contain counts only: no subjects, names, notes, IDs or message drafts.
+        print('Audit totals:', json.dumps({'source_events': len(items),
+              'calendar_events': len(existing), 'pending_notifications': notifications,
+              'silent_calendar_updates': len(actions) - notifications}))
         return counts
     if apply:
         for kind, event_id, body in actions:
