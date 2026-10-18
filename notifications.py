@@ -75,6 +75,19 @@ def when(event):
     return 'время не указано'
 
 
+def lesson_card(prefix, event):
+    fields = description_fields(event)
+    lines = [prefix + subject(event), when(event)]
+    if fields.get('Пара'):
+        lines.append(fields['Пара'])
+    for label in ('Преподаватель', 'Примечание', 'Описание'):
+        if fields.get(label):
+            lines.append(label + ': ' + fields[label])
+    if event.get('location'):
+        lines.append('Аудитория: ' + event['location'])
+    return '\n'.join(lines)
+
+
 def change_message(kind, previous, body):
     event = previous if kind == 'delete' else body
     title = event.get('summary') or 'Занятие'
@@ -82,7 +95,7 @@ def change_message(kind, previous, body):
         return None
     if kind in ('delete', 'insert'):
         prefix = '❌ Отменено: ' if kind == 'delete' else '➕ Новое занятие: '
-        return prefix + title + '\n' + when(event)
+        return lesson_card(prefix, event)
 
     old_fields, new_fields = description_fields(previous), description_fields(body)
     differences = []
@@ -103,5 +116,4 @@ def change_message(kind, previous, body):
         differences.append('Время: ' + when(previous) + ' → ' + when(body))
     if not differences:
         return None
-    # A subject separated by «·» is enough context; details follow below.
-    return '🔄 Изменено: ' + subject(body) + '\n' + when(body) + '\n' + '\n'.join(differences)
+    return lesson_card('🔄 Изменено: ', body) + '\n\nИзменилось:\n' + '\n'.join(differences)
