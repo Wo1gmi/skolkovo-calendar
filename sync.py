@@ -241,6 +241,12 @@ def notify_change(kind, previous, body):
     message = change_message(kind, previous, body)
     if not message:
         return
+    send_telegram(message)
+
+
+def send_telegram(message):
+    token = required('TELEGRAM_BOT_TOKEN')
+    chat = required('TELEGRAM_CHAT_ID')
     for offset in range(0, len(message), 3500):
         response = requests.post('https://api.telegram.org/bot' + token + '/sendMessage',
                                  json={'chat_id': chat, 'text': message[offset:offset+3500]},
@@ -299,6 +305,7 @@ def main():
             # First import creates the baseline without hundreds of alerts.
             if existing:
                 notify_change(kind, previous_by_id.get(event_id, {}), body)
+    return counts
 
 
 if __name__ == '__main__':

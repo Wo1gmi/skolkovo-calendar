@@ -1,0 +1,29 @@
+name: Test and update schedule
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: skolkovo-calendar
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SKOLKOVO_EMAIL: ${{ secrets.SKOLKOVO_EMAIL }}
+      SKOLKOVO_PASSWORD: ${{ secrets.SKOLKOVO_PASSWORD }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+      SCHEDULE_TIMEZONE: ${{ vars.SCHEDULE_TIMEZONE || 'Europe/Moscow' }}
+      ENABLE_DELETIONS: ${{ vars.ENABLE_DELETIONS }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      LOOKAHEAD_DAYS: '365'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt -r lms-requirements.txt
+      - run: python run_checks.py
