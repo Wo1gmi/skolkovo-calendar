@@ -58,10 +58,10 @@ class NotificationTests(unittest.TestCase):
 
     def test_removed_field_and_changed_room(self):
         new = copy.deepcopy(self.old)
-        new['description'] = new['description'].replace('Поток: МФТИ-2024\n', '')
+        new['description'] = new['description'].replace('Пара: 1 пара', '')
         new['location'] = '201'
         message = change_message('patch', self.old, new)
-        self.assertIn('Поток: МФТИ-2024 → —', message)
+        self.assertIn('Пара: 1 пара → —', message)
         self.assertIn('Аудитория: — → 201', message)
 
     def test_color_and_equivalent_timezone_are_silent(self):
@@ -100,6 +100,39 @@ class NotificationTests(unittest.TestCase):
         main()
         self.assertIn('Сдать до: 18 октября 23:59', telegram.call_args.args[0])
         self.assertNotIn('18.10.2026', telegram.call_args.args[0])
+
+    def test_calendar_has_no_cohort(self):
+        self.assertNotIn('Поток', self.old['description'])
+        self.assertNotIn('МФТИ-2024', self.old['description'])
+
+    def test_existing_calendar_cohort_is_removed_without_alert(self):
+        old = copy.deepcopy(self.old)
+        old['description'] += '\nПоток: МФТИ-2024'
+        self.assertIsNone(change_message('patch', old, self.old))
+        old['id'] = 'google1'
+        old['extendedProperties']['private']['content_hash'] = 'old-with-cohort'
+        actions = plan([self.item], [old], TZ, datetime(2026, 10, 1).date(), datetime(2027, 1, 1).date())
+        self.assertEqual(actions[0][0], 'patch')
+        self.assertNotIn('Поток', actions[0][2]['description'])
+
+    def test_cohort_is_never_part_of_notification(self):
+        old = copy.deepcopy(self.old)
+        old['description'] += '\nПоток: МФТИ-2024'
+        new = copy.deepcopy(self.old)
+        new['location'] = '201'
+        message = change_message('patch', old, new)
+        self.assertNotIn('Поток', message)
+        self.assertNotIn('МФТИ', message)
+        self.assertIn('18 октября', message)
+
+    def test_lms_reminder_always_includes_due_date(self):
+        from lms_sync import assignment_reminder
+        assignment = dict(course='Финансы', title='ДЗ', due='2026-10-18T23:59:00+03:00',
+                          url='https://l.skolkovo.ru/')
+        for hours in (72, 24, 1):
+            message = assignment_reminder(assignment, hours)
+            self.assertIn('Сдать до: 18 октября 23:59', message)
+            self.assertIn('Финансы', message)
 
     def test_cancelled_date_format(self):
         self.assertIn('\n18 октября 10:00–11:30', change_message('delete', self.old, None))

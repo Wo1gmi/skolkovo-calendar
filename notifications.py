@@ -83,6 +83,8 @@ def change_message(kind, previous, body):
     old_fields, new_fields = description_fields(previous), description_fields(body)
     differences = []
     for label in dict.fromkeys([*old_fields, *new_fields]):
+        if label == 'Поток':
+            continue
         delta = changed_text(old_fields.get(label, ''), new_fields.get(label, ''))
         if delta:
             differences.append(label + ': ' + delta)

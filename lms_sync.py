@@ -202,6 +202,13 @@ def assignment_changed(assignment, old):
             normalize(old.get('description', '')) != normalize(body['description']))
 
 
+def assignment_reminder(assignment, hours):
+    due = datetime.fromisoformat(assignment['due'])
+    return ('⏳ До сдачи осталось примерно ' + str(max(1, round(hours))) + ' ч.\n' +
+            'Сдать до: ' + format_date(due) + '\n' +
+            assignment_body(assignment)['summary'] + '\n' + assignment['url'])
+
+
 def sync_exact(assignments):
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
@@ -257,7 +264,7 @@ def sync_exact(assignments):
         bucket = '24' if hours <= 24 else '72' if hours <= 72 else None
         key = 'reminded_' + bucket if bucket else None
         if key and private.get(key) != due.isoformat():
-            telegram('⏳ До сдачи осталось примерно ' + str(max(1, round(hours))) + ' ч.\n' + body['summary'] + '\n' + assignment['url'])
+            telegram(assignment_reminder(assignment, hours))
             private[key] = due.isoformat()
             api.patch(calendarId=calendar, eventId=event_id, body={'extendedProperties': {'private': private}}).execute()
 

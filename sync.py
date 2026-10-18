@@ -183,7 +183,7 @@ def event_body(item, timezone):
         raise RuntimeError('Invalid lesson duration')
     description = '\n'.join(f'{label}: {item[key]}' for key, label in (
         ('teachers', 'Преподаватель'), ('note', 'Примечание'),
-        ('cohort', 'Поток'), ('schedule_title', 'Пара')) if item.get(key))
+        ('schedule_title', 'Пара')) if item.get(key))
     return {'colorId': event_color(item),
             'summary': item['title'], 'location': item.get('room') or '',
             'description': description,
