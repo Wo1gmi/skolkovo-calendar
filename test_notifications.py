@@ -21,7 +21,8 @@ class NotificationTests(unittest.TestCase):
                              title=self.item['title'].replace('Гр.1', 'Лекция')), TZ)
         message = change_message('patch', self.old, new)
         self.assertEqual(message, '🔄 Изменено: Искусственный интеллект в бизнесе\n'
-                         '18 октября 10:00–11:30\nПримечание: Гр.1 (онлайн) → Лекция (онлайн)')
+                         '18 октября 10:00–11:30\n1 пара\nПреподаватель: Ким Константин\n'
+                         'Примечание: Лекция (онлайн)\n\nИзменилось:\nПримечание: Гр.1 (онлайн) → Лекция (онлайн)')
 
     def test_cosmetic_change_still_updates_calendar_without_notification(self):
         old = dict(self.old, id='google1')
@@ -49,7 +50,7 @@ class NotificationTests(unittest.TestCase):
         new = event_body(dict(self.item, start='2026-10-19 10:30:00', end='2026-10-19 12:00:00'), TZ)
         message = change_message('patch', self.old, new)
         self.assertIn('Время: 18 октября 10:00–11:30 → 19 октября 10:30–12:00', message)
-        self.assertNotIn('Преподаватель:', message)
+        self.assertNotIn('Преподаватель:', message.split('Изменилось:\n')[1])
 
     def test_title_only_change(self):
         new = copy.deepcopy(self.old)
@@ -182,7 +183,7 @@ class NotificationTests(unittest.TestCase):
         new['description'] = new['description'].replace('Вход: 10:00', 'Вход: 10:30')
         message = change_message('patch', old, new)
         self.assertIn('Примечание: Лекция Вход: 10:00 → Лекция Вход: 10:30', message)
-        self.assertNotIn('Ким', message)
+        self.assertNotIn('Ким', message.split('Изменилось:\n')[1])
 
     def test_multiple_changes_keep_complete_values(self):
         new = event_body(dict(self.item, teachers='Ким Александр', note='Гр.2 (очно)', room='201',
@@ -191,6 +192,38 @@ class NotificationTests(unittest.TestCase):
         for value in ('Ким Константин → Ким Александр', 'Гр.1 (онлайн) → Гр.2 (очно)',
                       'Аудитория: — → 201', 'Время: 18 октября 10:00–11:30 → 6 ноября 12:00–13:30'):
             self.assertIn(value, message)
+
+    def test_current_lesson_details_are_present_when_only_time_changes(self):
+        new = event_body(dict(self.item, teachers='Ким Константин Станиславович',
+                             note='Лекция (онлайн)', start='2026-12-04 10:00:00',
+                             end='2026-12-04 11:30:00'), TZ)
+        old = copy.deepcopy(new)
+        old['start']['dateTime'] = '2026-12-04T09:00:00+03:00'
+        message = change_message('patch', old, new)
+        card, changes = message.split('\n\nИзменилось:\n')
+        for detail in ('4 декабря 10:00–11:30', '1 пара',
+                       'Преподаватель: Ким Константин Станиславович', 'Примечание: Лекция (онлайн)'):
+            self.assertIn(detail, card)
+        self.assertIn('Время:', changes)
+        self.assertNotIn('Преподаватель:', changes)
+        self.assertNotIn('Примечание:', changes)
+
+    def test_added_and_cancelled_lessons_also_have_details(self):
+        for kind in ('insert', 'delete'):
+            message = change_message(kind, self.old, self.old)
+            self.assertIn('Преподаватель: Ким Константин', message)
+            self.assertIn('Примечание: Гр.1 (онлайн)', message)
+            self.assertIn('18 октября 10:00–11:30', message)
+            self.assertNotIn('Поток', message)
+            self.assertNotIn('МФТИ', message)
+
+    def test_current_card_uses_new_teacher_and_new_note(self):
+        new = event_body(dict(self.item, teachers='Новый преподаватель', note='Контрольная'), TZ)
+        card = change_message('patch', self.old, new).split('\n\nИзменилось:\n')[0]
+        self.assertIn('Преподаватель: Новый преподаватель', card)
+        self.assertIn('Примечание: Контрольная', card)
+        self.assertNotIn('Ким', card)
+        self.assertNotIn('Гр.1', card)
 
     def test_cancelled_date_format(self):
         self.assertIn('\n18 октября 10:00–11:30', change_message('delete', self.old, None))
