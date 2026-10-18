@@ -1,6 +1,19 @@
 name: Test and update schedule
 on:
   workflow_dispatch:
+    inputs:
+      refresh_day:
+        description: Optional day for explicit single lesson refresh (YYYY-MM-DD)
+        type: string
+        default: ''
+      refresh_subject:
+        description: Exact subject for explicit refresh
+        type: string
+        default: ''
+      refresh_time:
+        description: Exact start time for explicit refresh (HH:MM Moscow)
+        type: string
+        default: ''
 permissions:
   contents: read
 concurrency:
@@ -20,10 +33,18 @@ jobs:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       LOOKAHEAD_DAYS: '365'
+      REFRESH_DAY: ${{ inputs.refresh_day }}
+      REFRESH_SUBJECT: ${{ inputs.refresh_subject }}
+      REFRESH_TIME: ${{ inputs.refresh_time }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt -r lms-requirements.txt
-      - run: python run_checks.py
+      - if: ${{ inputs.refresh_day != '' }}
+        run: python -m unittest discover -v
+      - if: ${{ inputs.refresh_day != '' }}
+        run: python refresh_lesson.py --date "$REFRESH_DAY" --subject "$REFRESH_SUBJECT" --time "$REFRESH_TIME"
+      - if: ${{ inputs.refresh_day == '' }}
+        run: python run_checks.py
