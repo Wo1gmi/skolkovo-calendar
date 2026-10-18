@@ -1,0 +1,7 @@
+.git
+.env
+work
+__pycache__
+*.sqlite3*
+*credentials*.json
+service-account*.json

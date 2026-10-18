@@ -1,0 +1,11 @@
+services:
+  schedule-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - bot-state:/state
+volumes:
+  bot-state:
