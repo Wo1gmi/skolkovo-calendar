@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, time
 from urllib.parse import unquote, urlparse, urlencode
 from zoneinfo import ZoneInfo
 import requests
+from notifications import change_message
 
 PROGRAM = 'uvLzhep9c6NWCBtvRal2FKab2Ou1vHgp'
 BASE = 'https://sk.skolkovo.ru'
@@ -237,29 +238,9 @@ def notify_change(kind, previous, body):
     chat = os.environ.get('TELEGRAM_CHAT_ID')
     if not token or not chat:
         return
-    def when(event):
-        raw = event.get('start', {}).get('dateTime', '')
-        return datetime.fromisoformat(raw).strftime('%d.%m.%Y %H:%M') if raw else 'время не указано'
-    if kind == 'delete':
-        message = '❌ Отменено: ' + previous.get('summary', 'Занятие') + '\\n' + when(previous)
-    elif kind == 'insert':
-        message = '➕ Новое занятие: ' + body['summary'] + '\\n' + when(body)
-    else:
-        differences = []
-        for field, label in [('summary', 'Название'), ('location', 'Аудитория'),
-                             ('description', 'Описание')]:
-            if (previous.get(field) or '') != (body.get(field) or ''):
-                differences.append(label + ': ' + str(previous.get(field) or '—') +
-                                   ' → ' + str(body.get(field) or '—'))
-        for field, label in [('start', 'Начало'), ('end', 'Конец')]:
-            old = previous.get(field, {}).get('dateTime')
-            new = body.get(field, {}).get('dateTime')
-            if old and new and datetime.fromisoformat(old) != datetime.fromisoformat(new):
-                fmt = lambda value: datetime.fromisoformat(value).strftime('%d.%m.%Y %H:%M')
-                differences.append(label + ': ' + fmt(old) + ' → ' + fmt(new))
-        if not differences:
-            return
-        message = '🔄 Изменено: ' + body['summary'] + '\\n' + '\\n'.join(differences)
+    message = change_message(kind, previous, body)
+    if not message:
+        return
     for offset in range(0, len(message), 3500):
         response = requests.post('https://api.telegram.org/bot' + token + '/sendMessage',
                                  json={'chat_id': chat, 'text': message[offset:offset+3500]},
