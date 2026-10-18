@@ -177,8 +177,11 @@ def event_color(item):
 
 
 def event_body(item, timezone):
-    start = datetime.fromisoformat(item['start']).replace(tzinfo=timezone)
-    end = datetime.fromisoformat(item['end']).replace(tzinfo=timezone)
+    def local_time(raw):
+        value = datetime.fromisoformat(raw)
+        return value.replace(tzinfo=timezone) if value.tzinfo is None else value.astimezone(timezone)
+    start = local_time(item['start'])
+    end = local_time(item['end'])
     if end <= start:
         raise RuntimeError('Invalid lesson duration')
     description = '\n'.join(f'{label}: {item[key]}' for key, label in (
@@ -255,7 +258,7 @@ def send_telegram(message):
             raise RuntimeError('Telegram notification failed; check bot secrets')
 
 
-def main():
+def main(audit=False):
     timezone = ZoneInfo(required('SCHEDULE_TIMEZONE'))
     first = datetime.now(timezone).date()
     # Rolling horizon, not a one-week import. Extend once API availability is verified.
@@ -290,10 +293,23 @@ def main():
     actions = plan(items, existing, timezone, first, last,
                    delete=os.environ.get('ENABLE_DELETIONS') == 'true',
                    reset_colors=os.environ.get('RESET_COLORS') == 'true')
-    apply = os.environ.get('APPLY') == 'true'
+    apply = not audit and os.environ.get('APPLY') == 'true'
     counts = {kind: sum(a[0] == kind for a in actions) for kind in ('insert', 'patch', 'delete')}
     print('Lessons:', len(items), 'planned:', counts, 'apply:', apply)
     previous_by_id = {e['id']: e for e in existing}
+    if audit:
+        for item in items:
+            if 'искусственный интеллект' in item['title'].lower():
+                print('SOURCE SAMPLE:', json.dumps({key: item.get(key) for key in
+                      ('id', 'title', 'teachers', 'note', 'room', 'start', 'end', 'schedule_title')}, ensure_ascii=False))
+                for event in existing:
+                    if event.get('extendedProperties', {}).get('private', {}).get('source_id') == str(item['id']):
+                        print('CALENDAR SAMPLE:', json.dumps({key: event.get(key) for key in
+                              ('summary', 'description', 'location', 'start', 'end')}, ensure_ascii=False))
+        for kind, event_id, body in actions:
+            previous = previous_by_id.get(event_id, {})
+            print('PREVIEW:', json.dumps({'action': kind, 'notification': change_message(kind, previous, body)}, ensure_ascii=False))
+        return counts
     if apply:
         for kind, event_id, body in actions:
             kwargs = {'calendarId': calendar}

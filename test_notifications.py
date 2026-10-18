@@ -21,7 +21,7 @@ class NotificationTests(unittest.TestCase):
                              title=self.item['title'].replace('Гр.1', 'Лекция')), TZ)
         message = change_message('patch', self.old, new)
         self.assertEqual(message, '🔄 Изменено: Искусственный интеллект в бизнесе\n'
-                         '18 октября 10:00–11:30\nПримечание: Гр.1 → Лекция')
+                         '18 октября 10:00–11:30\nПримечание: Гр.1 (онлайн) → Лекция (онлайн)')
 
     def test_cosmetic_change_still_updates_calendar_without_notification(self):
         old = dict(self.old, id='google1')
@@ -35,14 +35,14 @@ class NotificationTests(unittest.TestCase):
         new = event_body(dict(self.item, note='Гр.2 (онлайн)',
                              title=self.item['title'].replace('Гр.1', 'Гр.2')), TZ)
         message = change_message('patch', self.old, new)
-        self.assertIn('Примечание: Гр.1 → Гр.2', message)
+        self.assertIn('Примечание: Гр.1 (онлайн) → Гр.2 (онлайн)', message)
         self.assertNotIn('Название:', message)
         self.assertNotIn('МФТИ', message)
 
     def test_teacher_change(self):
         new = event_body(dict(self.item, teachers='Ким Александр',
                              title=self.item['title'].replace('Константин', 'Александр')), TZ)
-        self.assertIn('Преподаватель: Константин → Александр', change_message('patch', self.old, new))
+        self.assertIn('Преподаватель: Ким Константин → Ким Александр', change_message('patch', self.old, new))
         self.assertNotIn('Название:', change_message('patch', self.old, new))
 
     def test_time_change_and_new_date(self):
@@ -54,7 +54,7 @@ class NotificationTests(unittest.TestCase):
     def test_title_only_change(self):
         new = copy.deepcopy(self.old)
         new['summary'] = new['summary'].replace('бизнесе', 'образовании')
-        self.assertIn('Название: бизнесе → образовании', change_message('patch', self.old, new))
+        self.assertIn('Название: Искусственный интеллект в бизнесе → Искусственный интеллект в образовании', change_message('patch', self.old, new))
 
     def test_removed_field_and_changed_room(self):
         new = copy.deepcopy(self.old)
@@ -133,6 +133,64 @@ class NotificationTests(unittest.TestCase):
             message = assignment_reminder(assignment, hours)
             self.assertIn('Сдать до: 18 октября 23:59', message)
             self.assertIn('Финансы', message)
+
+    def test_reported_online_suffix_regression(self):
+        new = event_body(dict(self.item, note='Лекция (онлайн)',
+                             title='Искусственный интеллект в бизнесе · Ким Константин (Лекция (онлайн))',
+                             start='2026-11-06 10:00:00', end='2026-11-06 11:30:00'), TZ)
+        old = copy.deepcopy(new)
+        old['summary'] += ' (Онлайн)'
+        self.assertIsNone(change_message('patch', old, new))
+
+    def test_title_suffix_never_overrides_structured_fields(self):
+        for suffix in (' · Ким Константин (Онлайн)', ' · КИМ КОНСТАНТИН [ОНЛАЙН]',
+                       ' · Ким Константин (Гр.1 (онлайн))'):
+            with self.subTest(suffix=suffix):
+                old = copy.deepcopy(self.old)
+                old['summary'] = 'Искусственный интеллект в бизнесе' + suffix
+                self.assertIsNone(change_message('patch', old, self.old))
+
+    def test_real_teacher_change_even_with_unchanged_title(self):
+        new = copy.deepcopy(self.old)
+        new['description'] = new['description'].replace('Ким Константин', 'Ким Александр')
+        message = change_message('patch', self.old, new)
+        self.assertIn('Преподаватель: Ким Константин → Ким Александр', message)
+        self.assertNotIn('Название:', message)
+
+    def test_real_group_change_even_with_unchanged_title(self):
+        new = copy.deepcopy(self.old)
+        new['description'] = new['description'].replace('Гр.1', 'Гр.2')
+        self.assertIn('Гр.1 (онлайн) → Гр.2 (онлайн)', change_message('patch', self.old, new))
+
+    def test_case_and_punctuation_only_are_silent(self):
+        new = copy.deepcopy(self.old)
+        new['summary'] = new['summary'].upper()
+        new['description'] = new['description'].replace('Гр.1 (онлайн)', 'гр 1 [ОНЛАЙН]')
+        self.assertIsNone(change_message('patch', self.old, new))
+
+    def test_word_and_number_boundaries_are_preserved(self):
+        from notifications import changed_text
+        self.assertIsNotNone(changed_text('Гр.1,2', 'Гр.12'))
+        self.assertIsNotNone(changed_text('Иван Петров', 'ИванПетров'))
+        self.assertIsNotNone(changed_text('Гр.1', 'Гр.10'))
+        self.assertIsNone(changed_text('Гр. 1', 'гр 1'))
+
+    def test_note_colon_stays_with_note(self):
+        old = copy.deepcopy(self.old)
+        old['description'] = 'Преподаватель: Ким Константин\nПримечание: Лекция\nВход: 10:00\nПара: 1 пара'
+        new = copy.deepcopy(old)
+        new['description'] = new['description'].replace('Вход: 10:00', 'Вход: 10:30')
+        message = change_message('patch', old, new)
+        self.assertIn('Примечание: Лекция Вход: 10:00 → Лекция Вход: 10:30', message)
+        self.assertNotIn('Ким', message)
+
+    def test_multiple_changes_keep_complete_values(self):
+        new = event_body(dict(self.item, teachers='Ким Александр', note='Гр.2 (очно)', room='201',
+                             start='2026-11-06 12:00:00', end='2026-11-06 13:30:00'), TZ)
+        message = change_message('patch', self.old, new)
+        for value in ('Ким Константин → Ким Александр', 'Гр.1 (онлайн) → Гр.2 (очно)',
+                      'Аудитория: — → 201', 'Время: 18 октября 10:00–11:30 → 6 ноября 12:00–13:30'):
+            self.assertIn(value, message)
 
     def test_cancelled_date_format(self):
         self.assertIn('\n18 октября 10:00–11:30', change_message('delete', self.old, None))

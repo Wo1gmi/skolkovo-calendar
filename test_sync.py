@@ -45,6 +45,12 @@ class SyncTests(unittest.TestCase):
         action = self.run_plan([dict(self.item, room='2')], [event])[0]
         self.assertNotIn('colorId', action[2])
 
+    def test_aware_source_time_is_converted_without_changing_instant(self):
+        item = dict(self.item, start='2026-10-06T07:00:00+00:00', end='2026-10-06T08:30:00+00:00')
+        body = event_body(item, self.tz)
+        self.assertEqual(body['start']['dateTime'], '2026-10-06T10:00:00+03:00')
+        self.assertEqual(body['end']['dateTime'], '2026-10-06T11:30:00+03:00')
+
     def test_invalid_duration(self):
         with self.assertRaises(RuntimeError):
             event_body(dict(self.item, end=self.item['start']), self.tz)

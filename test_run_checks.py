@@ -69,3 +69,23 @@ class VerificationTests(unittest.TestCase):
             run_checks.main()
         sync.assert_not_called()
         tests.assert_not_called()
+
+
+@patch.dict(os.environ, SETTINGS, clear=True)
+class PreviewTests(unittest.TestCase):
+    @patch('run_checks.send_telegram')
+    @patch('run_checks.sync_schedule', return_value=dict(insert=1, patch=2, delete=0))
+    @patch('run_checks.subprocess.run')
+    def test_preview_is_read_only_and_silent(self, tests, sync, send):
+        run_checks.main(preview=True)
+        sync.assert_called_once_with(audit=True)
+        self.assertEqual(os.environ['APPLY'], 'false')
+        send.assert_not_called()
+
+    @patch('run_checks.send_telegram')
+    @patch('run_checks.sync_schedule', side_effect=ValueError('test'))
+    @patch('run_checks.subprocess.run')
+    def test_preview_errors_do_not_send_telegram(self, tests, sync, send):
+        with self.assertRaises(ValueError):
+            run_checks.main(preview=True)
+        send.assert_not_called()

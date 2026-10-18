@@ -1,5 +1,6 @@
 """Run regression tests, update the real schedule, and report to Telegram."""
 import os
+import argparse
 from pathlib import Path
 import subprocess
 import sys
@@ -11,7 +12,7 @@ from sync import main as sync_schedule, required, send_telegram
 ROOT = Path(__file__).resolve().parent
 
 
-def main():
+def main(preview=False):
     # Validate configuration before starting a run that must write live changes.
     for name in ('SKOLKOVO_EMAIL', 'SKOLKOVO_PASSWORD',
                  'GOOGLE_SERVICE_ACCOUNT_JSON', 'GOOGLE_CALENDAR_ID',
@@ -20,11 +21,15 @@ def main():
     if os.environ.get('SCHEDULE_FILE'):
         raise RuntimeError('SCHEDULE_FILE is set: live verification requires the real schedule')
     os.environ.setdefault('SCHEDULE_TIMEZONE', 'Europe/Moscow')
-    os.environ['APPLY'] = 'true'
+    os.environ['APPLY'] = 'false' if preview else 'true'
     os.environ['RESET_COLORS'] = 'false'
     try:
         subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-v'],
                        cwd=ROOT, check=True)
+        if preview:
+            counts = sync_schedule(audit=True)
+            print('Read-only audit complete:', counts)
+            return
         counts = sync_schedule()
         send_telegram('✅ Проверка завершена\n' + format_date(datetime.now(TZ)) +
                       '\nТесты пройдены. Расписание обновлено.' +
@@ -32,6 +37,8 @@ def main():
                       '\nОбновлено: ' + str(counts['patch']) +
                       '\nУдалено: ' + str(counts['delete']))
     except Exception as error:
+        if preview:
+            raise
         # Calendar writes may have started; never claim rollback or leak HTTP errors.
         try:
             send_telegram('❌ Проверка не завершена\n' + format_date(datetime.now(TZ)) +
@@ -44,7 +51,9 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--preview', action='store_true', help='Read sources and preview changes without calendar writes or Telegram')
+        main(preview=parser.parse_args().preview)
     except Exception as error:
         print('Verification failed:', str(error) if isinstance(error, RuntimeError)
               else type(error).__name__)

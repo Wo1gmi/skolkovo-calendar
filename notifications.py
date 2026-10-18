@@ -1,7 +1,6 @@
 """Human-readable Telegram messages; calendar comparisons stay unchanged."""
 import re
 from datetime import datetime
-from difflib import SequenceMatcher
 from zoneinfo import ZoneInfo
 
 MONTHS = ('января февраля марта апреля мая июня июля августа сентября '
@@ -15,40 +14,42 @@ def format_date(value):
     return f'{value.day} {MONTHS[value.month - 1]} {value:%H:%M}'
 
 
-def letters_digits(value):
-    # Preserve every letter (including case) and digit, ignore presentation.
-    return ''.join(c for c in value if c.isalnum())
+def text_key(value):
+    # Keep word and number boundaries: «Гр.1» == «гр 1», but «1, 2» != «12».
+    # Capitalisation is presentation; ё/е and different digits remain distinct.
+    return tuple(re.findall(r'[^\W\d_]+|\d+', value.casefold()))
 
 
 def changed_text(old, new):
-    if letters_digits(old) == letters_digits(new):
+    if text_key(old) == text_key(new):
         return None
-    # Keep only the changed words; common suffixes such as «(онлайн)» vanish.
-    old_words, new_words = old.split(), new.split()
-    matcher = SequenceMatcher(None, [letters_digits(w) for w in old_words],
-                              [letters_digits(w) for w in new_words], autojunk=False)
-    before, after = [], []
-    for tag, a, b, c, d in matcher.get_opcodes():
-        if tag != 'equal':
-            before.extend(old_words[a:b])
-            after.extend(new_words[c:d])
-    return (' '.join(before) or '—') + ' → ' + (' '.join(after) or '—')
+    # Complete changed fields retain context (group numbers, names, negations).
+    return (old.strip() or '—') + ' → ' + (new.strip() or '—')
+
+
+DESCRIPTION_LABELS = ('Преподаватель', 'Примечание', 'Поток', 'Пара')
 
 
 def description_fields(event):
     result = {}
     label = None
+    labels = '|'.join(DESCRIPTION_LABELS)
     for line in (event.get('description') or '').replace(r'\n', '\n').splitlines():
-        key, separator, value = line.partition(':')
-        if separator:
-            label = key.strip()
-            result[label] = value.strip()
-        elif label:
-            result[label] += ' ' + line.strip()
+        match = re.match(r'^(' + labels + r'):\s*(.*)$', line)
+        if match:
+            label = match[1]
+            result[label] = match[2].strip()
         elif line.strip():
-            label = 'Описание'
-            result[label] = line.strip()
+            # A colon in a note (e.g. «Ссылка: ...») is still part of that note.
+            label = label or 'Описание'
+            result[label] = (result.get(label, '') + ' ' + line.strip()).strip()
     return result
+
+
+def subject(event):
+    # «·» separates the subject from the API's repeated teacher/note suffix.
+    # Suffix rendering is not an independent source field: do not diff it.
+    return (event.get('summary') or 'Занятие').split('·', 1)[0].strip()
 
 
 def moment(event, field):
@@ -92,22 +93,12 @@ def change_message(kind, previous, body):
     if delta:
         differences.append('Аудитория: ' + delta)
 
-    # The API repeats teachers/notes in the title. Report each change once.
-    def title_remainder(event, fields):
-        text = letters_digits(event.get('summary') or '')
-        for value in sorted(fields.values(), key=len, reverse=True):
-            value = letters_digits(value)
-            if value:
-                text = text.replace(value, '')
-        return text
-
-    if title_remainder(previous, old_fields) != title_remainder(body, new_fields):
-        delta = changed_text(previous.get('summary') or '', title)
-        if delta:
-            differences.insert(0, 'Название: ' + delta)
+    delta = changed_text(subject(previous), subject(body))
+    if delta:
+        differences.insert(0, 'Название: ' + delta)
     if any(moment(previous, field) != moment(body, field) for field in ('start', 'end')):
         differences.append('Время: ' + when(previous) + ' → ' + when(body))
     if not differences:
         return None
     # A subject separated by «·» is enough context; details follow below.
-    return '🔄 Изменено: ' + title.split('·', 1)[0].strip() + '\n' + when(body) + '\n' + '\n'.join(differences)
+    return '🔄 Изменено: ' + subject(body) + '\n' + when(body) + '\n' + '\n'.join(differences)
