@@ -1,0 +1,33 @@
+name: Export LMS materials
+on:
+  workflow_dispatch:
+    inputs:
+      course_ids:
+        description: "Course IDs separated by commas or spaces"
+        required: true
+        default: "231"
+        type: string
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r lms_export/requirements.txt
+      - run: python lms_export/export.py
+        env:
+          SKOLKOVO_EMAIL: ${{ secrets.SKOLKOVO_EMAIL }}
+          SKOLKOVO_PASSWORD: ${{ secrets.SKOLKOVO_PASSWORD }}
+          LMS_COURSE_IDS: ${{ inputs.course_ids }}
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
+          name: lms-materials
+          path: lms_export/materials/
+          if-no-files-found: error
+          retention-days: 7
