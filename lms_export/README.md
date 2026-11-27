@@ -19,3 +19,5 @@ are not downloaded. A failed resource makes the run fail while preserving partia
 
 Local use: install requirements, set the two credential variables and optionally
 LMS_COURSE_IDS, then run `python lms_export/export.py`.
+
+With no course IDs, the exporter discovers subjects from the user's grade overview (userid 4643). Grades themselves are not exported. A change to the exporter on main also starts an export.

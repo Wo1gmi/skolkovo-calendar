@@ -1,11 +1,16 @@
 name: Export LMS materials
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'lms_export/**'
+      - '.github/workflows/lms-export.yml'
   workflow_dispatch:
     inputs:
       course_ids:
-        description: "Course IDs separated by commas or spaces"
-        required: true
-        default: "231"
+        description: "Optional course IDs; blank discovers subjects from grade overview"
+        required: false
+        default: ""
         type: string
 permissions:
   contents: read

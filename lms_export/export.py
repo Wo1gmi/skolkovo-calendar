@@ -5,7 +5,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit, unquote
+from urllib.parse import urljoin, urlsplit, unquote, parse_qs
 
 import requests
 from bs4 import BeautifulSoup
@@ -127,13 +127,39 @@ def export(client, course_ids):
     return failures
 
 
+def discover_courses(client):
+    overview = client.page(BASE + "/grade/report/overview/index.php?id=1&userid=4643")
+    region = overview.select_one("#region-main") or overview
+    ids = set()
+    for link in region.select("table a[href]"):
+        parsed = urlsplit(urljoin(BASE, link["href"]))
+        if parsed.netloc != "l.skolkovo.ru":
+            continue
+        params = parse_qs(parsed.query)
+        if parsed.path == "/course/view.php":
+            value = params.get("id", [""])[0]
+        elif parsed.path.startswith("/grade/report/") and "overview" not in parsed.path:
+            value = params.get("id", [""])[0]
+        else:
+            continue
+        if value.isdigit() and int(value) > 1:
+            ids.add(int(value))
+    if not ids:
+        raise RuntimeError("No courses found in grade overview")
+    print("Discovered courses:", len(ids))
+    return sorted(ids)
+
+
 def main():
-    raw = os.environ.get("LMS_COURSE_IDS", "231")
-    ids = [int(value) for value in re.split(r"[,\s]+", raw.strip()) if value]
-    if not ids or any(value <= 0 for value in ids):
-        raise RuntimeError("Invalid course IDs")
     client = Client()
     client.login()
+    raw = os.environ.get("LMS_COURSE_IDS", "").strip()
+    if raw:
+        ids = [int(value) for value in re.split(r"[,\s]+", raw) if value]
+        if not ids or any(value <= 0 for value in ids):
+            raise RuntimeError("Invalid course IDs")
+    else:
+        ids = discover_courses(client)
     failures = export(client, ids)
     print("Failed resources:", failures)
     return 1 if failures else 0
