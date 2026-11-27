@@ -51,7 +51,8 @@ class Client:
             raise RuntimeError("Unexpected login destination")
         result = self.session.post(action, data=data, allow_redirects=False, timeout=60)
         result.raise_for_status()
-        self.page(BASE + "/my/")
+        # Authentication is checked on the requested course/overview page.
+        # Avoid the potentially slow personalized dashboard.
 
     def page(self, url):
         response = self.get(url)
