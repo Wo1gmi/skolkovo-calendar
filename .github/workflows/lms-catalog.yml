@@ -1,0 +1,36 @@
+name: Catalog existing LMS materials
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lms-catalog.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  catalog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: 46027130800
+          pattern: lms-course-*
+          merge-multiple: true
+          path: lms_export/materials
+      - run: python scripts/lms_catalog.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lms-contents
+          path: |
+            lms_export/materials/CONTENTS.*
+            lms_export/materials/catalog.json
+            lms_export/materials/graph.mmd
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lms-materials-with-contents
+          path: lms_export/materials/
+          retention-days: 7
