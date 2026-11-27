@@ -153,6 +153,7 @@ def discover_courses(client):
 def main():
     client = Client()
     client.login()
+    print("LMS login completed")
     raw = os.environ.get("LMS_COURSE_IDS", "").strip()
     if raw:
         ids = [int(value) for value in re.split(r"[,\s]+", raw) if value]
@@ -168,6 +169,8 @@ def main():
 if __name__ == "__main__":
     try:
         sys.exit(main())
-    except Exception:
-        print("Export failed; check credentials and course access.")
+    except Exception as error:
+        print("Export failed:", type(error).__name__)
+        if isinstance(error, RuntimeError):
+            print(str(error))
         sys.exit(1)
