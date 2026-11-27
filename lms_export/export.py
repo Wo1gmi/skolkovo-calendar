@@ -131,20 +131,21 @@ def discover_courses(client):
     overview = client.page(BASE + "/grade/report/overview/index.php?id=1&userid=4643")
     region = overview.select_one("#region-main") or overview
     ids = set()
-    for link in region.select("table a[href]"):
+    for link in region.select("a[href]"):
         parsed = urlsplit(urljoin(BASE, link["href"]))
         if parsed.netloc != "l.skolkovo.ru":
             continue
         params = parse_qs(parsed.query)
         if parsed.path == "/course/view.php":
             value = params.get("id", [""])[0]
-        elif parsed.path.startswith("/grade/report/") and "overview" not in parsed.path:
+        elif parsed.path.startswith("/grade/report/") :
             value = params.get("id", [""])[0]
         else:
             continue
         if value.isdigit() and int(value) > 1:
             ids.add(int(value))
     if not ids:
+        print("Overview course links:", [a.get("href") for a in region.select("a[href]") if any(p in a.get("href", "") for p in ("/course/", "/grade/report/"))])
         raise RuntimeError("No courses found in grade overview")
     print("Discovered courses:", len(ids))
     return sorted(ids)
