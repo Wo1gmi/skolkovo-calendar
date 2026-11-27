@@ -136,7 +136,7 @@ def discover_courses(client):
         if parsed.netloc != "l.skolkovo.ru":
             continue
         params = parse_qs(parsed.query)
-        if parsed.path == "/course/view.php":
+        if parsed.path in ("/course/view.php", "/course/user.php"):
             value = params.get("id", [""])[0]
         elif parsed.path.startswith("/grade/report/") :
             value = params.get("id", [""])[0]
@@ -145,7 +145,6 @@ def discover_courses(client):
         if value.isdigit() and int(value) > 1:
             ids.add(int(value))
     if not ids:
-        print("Overview course links:", [a.get("href") for a in region.select("a[href]") if any(p in a.get("href", "") for p in ("/course/", "/grade/report/"))])
         raise RuntimeError("No courses found in grade overview")
     print("Discovered courses:", len(ids))
     return sorted(ids)
