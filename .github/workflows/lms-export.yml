@@ -15,24 +15,79 @@ on:
 permissions:
   contents: read
 jobs:
-  export:
+  discover:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 5
+    outputs:
+      courses: ${{ steps.courses.outputs.courses }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - run: pip install -r lms_export/requirements.txt
-      - run: python lms_export/export.py
+      - id: courses
         env:
           SKOLKOVO_EMAIL: ${{ secrets.SKOLKOVO_EMAIL }}
           SKOLKOVO_PASSWORD: ${{ secrets.SKOLKOVO_PASSWORD }}
           LMS_COURSE_IDS: ${{ inputs.course_ids }}
+        run: |
+          python -u - <<'PY'
+          import sys, os, json, re
+          sys.path.insert(0, "lms_export")
+          from export import Client, discover_courses
+          raw = os.environ.get("LMS_COURSE_IDS", "").strip()
+          if raw:
+              ids = [int(x) for x in re.split(r"[,\s]+", raw) if x]
+              if not ids or any(x <= 0 for x in ids):
+                  raise RuntimeError("Invalid course IDs")
+          else:
+              client = Client()
+              client.login()
+              ids = discover_courses(client)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              output.write("courses=" + json.dumps(ids) + "\n")
+          PY
+  export:
+    needs: discover
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        course: ${{ fromJSON(needs.discover.outputs.courses) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r lms_export/requirements.txt
+      - run: python -u lms_export/export.py
+        env:
+          SKOLKOVO_EMAIL: ${{ secrets.SKOLKOVO_EMAIL }}
+          SKOLKOVO_PASSWORD: ${{ secrets.SKOLKOVO_PASSWORD }}
+          LMS_COURSE_IDS: ${{ matrix.course }}
       - uses: actions/upload-artifact@v4
         if: ${{ always() }}
         with:
-          name: lms-materials
+          name: lms-course-${{ matrix.course }}
           path: lms_export/materials/
+          if-no-files-found: warn
+          retention-days: 7
+  bundle:
+    needs: [discover, export]
+    if: ${{ always() && needs.discover.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: lms-course-*
+          merge-multiple: true
+          path: materials
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lms-materials
+          path: materials/
           if-no-files-found: error
           retention-days: 7
